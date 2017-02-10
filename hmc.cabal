@@ -1,0 +1,53 @@
+name:                hmc
+version:             0.1.0.0
+synopsis:            Music Player Daemon client
+description:         Please see README.md
+homepage:            https://github.com/ondrejslamecka/hmc#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Ondrej Slamecka
+maintainer:          ondrej@slamecka.cz
+copyright:           2017, Ondrej Slamecka
+category:            Sound, Music
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Hmc.Rendering
+                     , Hmc.Types
+                     , Hmc.EventHandler
+  build-depends:       base
+                     , protolude
+                     , microlens
+                     , microlens-th
+                     , vector
+                     , brick
+                     , vty
+                     , libmpd
+                     , text
+                     , data-default-class
+                     , timers-updatable
+                     , libmpd
+
+  default-extensions:  NoImplicitPrelude
+  default-language:    Haskell2010
+
+executable hmc
+  hs-source-dirs:      src/main
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , protolude
+                     , brick
+                     , vty
+                     , libmpd
+                     , hmc
+
+  default-extensions:  NoImplicitPrelude
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/ondrejslamecka/hmc
