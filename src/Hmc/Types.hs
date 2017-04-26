@@ -11,6 +11,7 @@ module Hmc.Types
   , seekTimer
   , playlist
   , currentSong
+  , keyCombo
   , currentDirContents
   , traversal
   , initialState
@@ -29,6 +30,7 @@ import qualified Network.MPD as MPD
 import qualified Brick.Widgets.List as L
 import qualified Brick.BChan as C
 import Data.Vector (fromList)
+import Data.Time.Clock.POSIX (POSIXTime)
 
 
 -- Lenses for MPD.Status
@@ -71,6 +73,7 @@ data State = State
 
   , _playlist :: L.List () MPD.Song
   , _currentSong :: Maybe MPD.Song
+  , _keyCombo :: Maybe (Char, POSIXTime)
 
   , _currentDirContents :: L.List () (Maybe MPD.LsResult)
   -- ^ If an item is Nothing then it represents the "all music" option
@@ -88,6 +91,7 @@ initialState chan = State
   , _seekTimer = Nothing
   , _playlist = L.list () mempty 1
   , _currentSong = Nothing
+  , _keyCombo = Nothing
   , _currentDirContents = L.list () (fromList [Nothing]) 1
   , _traversal = []
   }

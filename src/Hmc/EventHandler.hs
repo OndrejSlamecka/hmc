@@ -14,6 +14,7 @@ import Lens.Micro ((.~), (^.), (%~), (<&>))
 import qualified Network.MPD as MPD
 import Network.MPD (withMPD)
 import Data.Vector (fromList)
+import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import qualified Graphics.Vty as V
 import qualified Brick.Main as M
 import qualified Brick.Widgets.List as L
@@ -72,6 +73,21 @@ modifyPlaylist st selection = liftIO $ withMPD $ do
     else return st
 
   return (plInfo, newState)
+
+
+-- | Generic handler for quick successive presses.
+-- firstLetter is the expected first letter in the combo,
+-- secondLetter is the one just pressed.
+handleKeyCombo :: MonadIO m => Char -> Char -> (State -> m State) -> State -> m State
+handleKeyCombo firstLetter secondLetter action st = liftIO getPOSIXTime >>= go
+  where
+    go now = if combo
+      then action st <&> keyCombo .~ Nothing
+      else return $ st & keyCombo .~ Just (secondLetter, now)
+      where
+        combo = case st ^. keyCombo of
+          Nothing -> False
+          Just (lastKey, lastKeyTime) -> lastKey == firstLetter && lastKeyTime > now - 1
 
 
 -- STATE MANAGEMENT
@@ -292,6 +308,11 @@ handleEvent st = go (st ^. appView) st
 
 playlistViewEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
 playlistViewEvent st (T.VtyEvent e) = case e of
+  V.EvKey (V.KChar 'G') [] -> M.continue $
+    -- TODO: I think that length is in O(n), we should cache it
+    st & playlist %~ L.listMoveTo ((-) 1 . length $ st ^. playlist)
+  V.EvKey (V.KChar 'g') [] -> M.continue =<< handleKeyCombo 'g' 'g' move st
+    where move st = return $ st & playlist %~ L.listMoveTo 0
   V.EvKey V.KUp [] -> M.continue $ st & playlist %~ L.listMoveUp
   V.EvKey V.KDown [] -> M.continue $ st & playlist %~ L.listMoveDown
   V.EvKey V.KLeft [] -> M.continue =<< seek st Backward
@@ -308,6 +329,11 @@ playlistViewEvent st ev = commonEvent st ev
 
 browserViewEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
 browserViewEvent st (T.VtyEvent e) = case e of
+  V.EvKey (V.KChar 'G') [] -> M.continue $
+    -- TODO: I think that length is in O(n), we should cache it
+    st & currentDirContents %~ L.listMoveTo ((-) 1 . length $ st ^. currentDirContents)
+  V.EvKey (V.KChar 'g') [] -> M.continue =<< handleKeyCombo 'g' 'g' move st
+    where move st = return $ st & currentDirContents %~ L.listMoveTo 0
   V.EvKey V.KUp [] -> M.continue $ st & currentDirContents %~ L.listMoveUp
   V.EvKey V.KDown [] -> M.continue $ st & currentDirContents %~ L.listMoveDown
   V.EvKey V.KLeft [] -> M.continue =<< leaveDirectory st

@@ -27,6 +27,7 @@ Controls
 * Switch between views: to playlist `F2` or `Esc`, to add `F3`, to open `F4`.
 * Exit with `q` or `^d`.
 * Update MPD database with `F5`.
+* `gg`, `G` to move to the top/bottom of a list.
 
 
 ![Playlist view](screenshot.png)
@@ -39,4 +40,4 @@ TODO
 * Playing queue (like billy has).
 * Offer to show ID3 tags in playlist.
 * Remember directory traversal in browser between `hmc` runs.
-* Faster scrolling with shift-arrows, `gg` and `G` vim movements.
+* Faster scrolling with shift-arrows, `^f`/`PageDown` and `^b`/`PageUp`.

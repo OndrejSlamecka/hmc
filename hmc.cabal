@@ -27,6 +27,7 @@ library
                      , vty
                      , libmpd
                      , text
+                     , time
                      , data-default-class
                      , timers-updatable
                      , libmpd
