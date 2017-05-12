@@ -14,6 +14,7 @@ import Lens.Micro ((.~), (^.), (%~), (<&>))
 import qualified Network.MPD as MPD
 import Network.MPD (withMPD)
 import Data.Vector (fromList)
+import qualified Data.Vector as V (length)
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import qualified Graphics.Vty as V
 import qualified Brick.Main as M
@@ -44,6 +45,11 @@ flipState state = case state of
   MPD.Playing -> MPD.Paused
   MPD.Stopped -> MPD.Playing
   MPD.Paused  -> MPD.Playing
+
+
+-- | Returns the last index in the given list (in O(1) time)
+listEndIndex :: L.List n e -> Int
+listEndIndex list = V.length (list ^. L.listElementsL) - 1
 
 
 -- | Modify playlist and return the new playlist and state
@@ -309,8 +315,7 @@ handleEvent st = go (st ^. appView) st
 playlistViewEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
 playlistViewEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KChar 'G') [] -> M.continue $
-    -- TODO: I think that length is in O(n), we should cache it
-    st & playlist %~ L.listMoveTo ((-) 1 . length $ st ^. playlist)
+    st & playlist %~ L.listMoveTo (listEndIndex $ st ^. playlist)
   V.EvKey (V.KChar 'g') [] -> M.continue =<< handleKeyCombo 'g' 'g' move st
     where move st = return $ st & playlist %~ L.listMoveTo 0
   V.EvKey V.KUp [] -> M.continue $ st & playlist %~ L.listMoveUp
@@ -330,8 +335,7 @@ playlistViewEvent st ev = commonEvent st ev
 browserViewEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
 browserViewEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KChar 'G') [] -> M.continue $
-    -- TODO: I think that length is in O(n), we should cache it
-    st & currentDirContents %~ L.listMoveTo ((-) 1 . length $ st ^. currentDirContents)
+    st & currentDirContents %~ L.listMoveTo (listEndIndex $ st ^. currentDirContents)
   V.EvKey (V.KChar 'g') [] -> M.continue =<< handleKeyCombo 'g' 'g' move st
     where move st = return $ st & currentDirContents %~ L.listMoveTo 0
   V.EvKey V.KUp [] -> M.continue $ st & currentDirContents %~ L.listMoveUp
