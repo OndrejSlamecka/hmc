@@ -8,7 +8,8 @@ module Hmc.Rendering
 import Hmc.Types
 import Protolude hiding (State, length)
 import Lens.Micro ((.~), (^.), (%~))
-import Data.Text (length, pack)
+import Data.Text (length, pack, take)
+import qualified Data.Map.Lazy as Map (lookup)
 import qualified Network.MPD as MPD
 import qualified Brick.AttrMap as A
 import qualified Brick.Widgets.List as L
@@ -21,7 +22,10 @@ import Brick.Widgets.Border (hBorder, hBorderWithLabel)
 import Brick.Widgets.Core
   ( txt
   , vBox
+  , hBox
   , withAttr
+  , padRight
+  , hLimit
   )
 
 --
@@ -101,12 +105,33 @@ renderPlaylist appState = vBox
   , L.renderList renderItem True (appState ^. playlist)
   ]
   where
-    renderItem _ song = style song . txt
-                      . MPD.toText . MPD.sgFilePath $ song
+    renderItem _ song = style song $ renderSong appState lastTag song
     style song = if MPD.sgId song == (appState ^. playingStatus . stSongIDL)
       then withAttr playingSongAttr
       else identity
 
+    lastTag = fst <$> lastMay (appState ^. tagsAndWidths)
+
+
+renderSong appState lastTag song
+  | mode == PlaylistPaths = txt . MPD.toText . MPD.sgFilePath $ song
+  | mode == PlaylistTags  = hBox $ map getTag (appState ^. tagsAndWidths)
+  where
+    mode = appState ^. playlistMode
+    tags = MPD.sgTags song
+    getTag (tag, maxWidth) =
+      (if lastTag /= Just tag then hLimit width else identity)
+      . padRight T.Max
+      . txt
+      . (if lastTag /= Just tag then Data.Text.take maxWidth else identity)
+      . fromMaybe "-Tag Missing-"
+      $ MPD.toText <$> (head =<< Map.lookup tag tags)
+      where
+        width = (+spacing) . min maxWidth
+          $ fromMaybe maxWidth (Map.lookup tag tagsMaxWidths)
+
+    spacing = 3
+    tagsMaxWidths = appState ^. playlistTagsMaxWidths
 
 renderBrowser title appState = vBox
   [ hBorderWithLabel (txt $ " " <> title <> " " )

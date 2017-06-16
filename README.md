@@ -30,7 +30,7 @@ Controls
 * `gg`, `G` to move to the top/bottom of a list.
 
 
-![Playlist view](screenshot.png)
+![Playlist view](screenshot.jpg)
 
 
 TODO
@@ -38,6 +38,5 @@ TODO
 
 * Search with `/`.
 * Playing queue (like billy has).
-* Offer to show ID3 tags in playlist.
 * Remember directory traversal in browser between `hmc` runs.
 * Faster scrolling with shift-arrows, `^f`/`PageDown` and `^b`/`PageUp`.

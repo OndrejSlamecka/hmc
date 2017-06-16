@@ -11,9 +11,11 @@ import Hmc.Rendering
 import Hmc.Types
 import System.Timer.Updatable (replacer, renewIO)
 import Lens.Micro ((.~), (^.), (%~), (<&>))
+import qualified Data.Text as Text (length)
 import qualified Network.MPD as MPD
 import Network.MPD (withMPD)
 import Data.Vector (fromList)
+import qualified Data.Map.Lazy as Map
 import qualified Data.Vector as V (length)
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import qualified Graphics.Vty as V
@@ -50,6 +52,18 @@ flipState state = case state of
 -- | Returns the last index in the given list (in O(1) time)
 listEndIndex :: L.List n e -> Int
 listEndIndex list = V.length (list ^. L.listElementsL) - 1
+
+
+-- | Takes a playlist and returns a map from tag to maximum length of
+-- its value (or Nothing if there is no value)
+playlistToTagsMaxWidths :: [(MPD.Metadata, Int)] -> [MPD.Song] -> Map MPD.Metadata Int
+playlistToTagsMaxWidths tagsAndWidths playlist = fromMaybe Map.empty
+  $ foldr1May (Map.unionWith max) tagLengthMaps
+  where
+    tagLengthMaps = map (tagsToLengths . MPD.sgTags) playlist
+    -- If the list of values is empty the length is set to 20 to leave
+    -- some space for an error text (this approach should be improved)
+    tagsToLengths = Map.map (\vs -> fromMaybe 20 (Text.length <$> MPD.toText <$> head vs))
 
 
 -- | Modify playlist and return the new playlist and state
@@ -137,6 +151,7 @@ loadPlaylist state = do
 
   return $ state
     & playlist .~ L.list () (fromList playlistInfo') 1
+    & playlistTagsMaxWidths .~ playlistToTagsMaxWidths (state ^. tagsAndWidths) playlistInfo'
 
 
 -- | Load status and current song from MPD

@@ -28,6 +28,7 @@ library
                      , libmpd
                      , text
                      , time
+                     , containers
                      , data-default-class
                      , timers-updatable
                      , libmpd

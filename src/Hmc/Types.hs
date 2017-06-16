@@ -10,12 +10,16 @@ module Hmc.Types
   , appView
   , seekTimer
   , playlist
+  , playlistTagsMaxWidths
+  , playlistMode
+  , tagsAndWidths
   , currentSong
   , keyCombo
   , currentDirContents
   , traversal
   , initialState
   , View(..)
+  , PlaylistMode(..)
   , Event(..)
   , stTimeL
   , stStateL
@@ -26,6 +30,7 @@ import Protolude hiding (State)
 import Lens.Micro.TH (makeLenses)
 import Lens.Micro (lens, Lens')
 import System.Timer.Updatable (Updatable)
+import qualified Data.Map.Lazy as Map
 import qualified Network.MPD as MPD
 import qualified Brick.Widgets.List as L
 import qualified Brick.BChan as C
@@ -55,6 +60,10 @@ data Event = Timer | Seek
 data View = PlaylistView | AddView | OpenView deriving (Eq)
 
 
+-- | Display songs as paths or with ID3 tags
+data PlaylistMode = PlaylistPaths | PlaylistTags deriving (Eq)
+
+
 -- | Stores the path the user traversed in the file browser.
 type TraversalStack = [(Int, MPD.Path)]
 
@@ -72,6 +81,15 @@ data State = State
   , _seekTimer :: Maybe (Updatable ())
 
   , _playlist :: L.List () MPD.Song
+  , _playlistTagsMaxWidths :: Map MPD.Metadata Int
+  -- ^ Maximum length of given tag value in the current playlist,
+  -- if there is no tag value for the given tag no value is in the map
+
+  , _playlistMode :: PlaylistMode
+  , _tagsAndWidths :: [(MPD.Metadata, Int)]
+  -- ^ List of tags to be shown in playlist along with the maximum width
+  -- of its column
+
   , _currentSong :: Maybe MPD.Song
   , _keyCombo :: Maybe (Char, POSIXTime)
 
@@ -79,6 +97,7 @@ data State = State
   -- ^ If an item is Nothing then it represents the "all music" option
   -- The current implementation places this "all music" list above the
   -- file tree.
+  --
   , _traversal :: TraversalStack
   }
 
@@ -88,8 +107,16 @@ initialState chan = State
   , _eventChannel = chan
   , _playingStatus = MPD.def
   , _appView = PlaylistView
+  , _playlistMode = PlaylistTags
+  , _tagsAndWidths =
+    [ (MPD.Date, 6)
+    , (MPD.Artist, 25)
+    , (MPD.Album, 30)
+    , (MPD.Title, 120)
+    ]
   , _seekTimer = Nothing
   , _playlist = L.list () mempty 1
+  , _playlistTagsMaxWidths = Map.empty
   , _currentSong = Nothing
   , _keyCombo = Nothing
   , _currentDirContents = L.list () (fromList [Nothing]) 1
