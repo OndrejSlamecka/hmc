@@ -398,6 +398,8 @@ commonEvent st (T.VtyEvent e) = case e of
 
   V.EvKey V.KUp [] -> moveListAndContinue
   V.EvKey V.KDown [] -> moveListAndContinue
+  V.EvKey V.KUp [V.MShift] -> moveListAndContinue
+  V.EvKey V.KDown [V.MShift] -> moveListAndContinue
   V.EvKey (V.KChar 'f') [V.MCtrl] -> moveListAndContinue
   V.EvKey (V.KChar 'b') [V.MCtrl] -> moveListAndContinue
   V.EvKey V.KPageUp [] -> moveListAndContinue
@@ -436,4 +438,10 @@ handleListMovement event list =
     V.EvKey (V.KChar 'G') [] -> return $ L.listMoveTo (listEndIndex list) list
     V.EvKey (V.KChar 'f') [V.MCtrl] -> L.handleListEvent (V.EvKey V.KPageDown []) list
     V.EvKey (V.KChar 'b') [V.MCtrl] -> L.handleListEvent (V.EvKey V.KPageUp []) list
+    V.EvKey V.KUp [V.MShift]   -> return $ maybe list move5up   (list ^. L.listSelectedL)
+    V.EvKey V.KDown [V.MShift] -> return $ maybe list move5down (list ^. L.listSelectedL)
     _ -> L.handleListEvent event list -- Brick's default handler
+
+    where
+      move5up   pos = L.listMoveTo (max 0 (pos - 5)) list
+      move5down pos = L.listMoveTo (       pos + 5 ) list
