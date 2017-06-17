@@ -28,6 +28,10 @@ import qualified Brick.Types as T
 data SeekDirection = Backward | Forward
 
 
+-- | Microlens doesn't have this
+(%%~) = identity
+
+
 -- | Every tickerInterval microseconds a Timer event is sent and the
 -- playing progress is updated (if the player is playing).
 -- The thread sending this event is created in the main file
@@ -315,12 +319,10 @@ browserSelect st (position, selection) =
 
 --- EVENT HANDLERS
 
--- | Event handler is first chosen according to current view, if the
--- chosen handler does not catch the event it passes it to the
--- commonEvent handler
-
+-- | Handler is chosen according to the current view. If the event is
+-- not specific for the view it is then passed to `commonEvent` handler
 handleEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
-handleEvent st = go (st ^. appView) st
+handleEvent state event = go (state ^. appView) state event
   where
     go PlaylistView = playlistViewEvent
     go AddView      = browserViewEvent
@@ -329,12 +331,8 @@ handleEvent st = go (st ^. appView) st
 
 playlistViewEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
 playlistViewEvent st (T.VtyEvent e) = case e of
-  V.EvKey (V.KChar 'G') [] -> M.continue $
-    st & playlist %~ L.listMoveTo (listEndIndex $ st ^. playlist)
   V.EvKey (V.KChar 'g') [] -> M.continue =<< handleKeyCombo 'g' 'g' move st
     where move st = return $ st & playlist %~ L.listMoveTo 0
-  V.EvKey V.KUp [] -> M.continue $ st & playlist %~ L.listMoveUp
-  V.EvKey V.KDown [] -> M.continue $ st & playlist %~ L.listMoveDown
   V.EvKey V.KLeft [] -> M.continue =<< seek st Backward
   V.EvKey V.KRight [] -> M.continue =<< seek st Forward
   V.EvKey V.KEnter [] ->
@@ -349,12 +347,8 @@ playlistViewEvent st ev = commonEvent st ev
 
 browserViewEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
 browserViewEvent st (T.VtyEvent e) = case e of
-  V.EvKey (V.KChar 'G') [] -> M.continue $
-    st & currentDirContents %~ L.listMoveTo (listEndIndex $ st ^. currentDirContents)
   V.EvKey (V.KChar 'g') [] -> M.continue =<< handleKeyCombo 'g' 'g' move st
     where move st = return $ st & currentDirContents %~ L.listMoveTo 0
-  V.EvKey V.KUp [] -> M.continue $ st & currentDirContents %~ L.listMoveUp
-  V.EvKey V.KDown [] -> M.continue $ st & currentDirContents %~ L.listMoveDown
   V.EvKey V.KLeft [] -> M.continue =<< leaveDirectory st
   V.EvKey V.KRight [] -> M.continue =<< maybe (return st) enter selection
     where
@@ -402,7 +396,18 @@ commonEvent st (T.VtyEvent e) = case e of
 
         M.continue $ st & playingStatus . stStateL %~ flipState
 
+  V.EvKey V.KUp [] -> moveListAndContinue
+  V.EvKey V.KDown [] -> moveListAndContinue
+  V.EvKey (V.KChar 'G') [] -> moveListAndContinue
+
   _ -> M.continue st
+
+  where
+    moveListAndContinue = M.continue =<< goListMovement (st ^. appView)
+    goListMovement PlaylistView = st & playlist %%~ handleListMovement e
+    goListMovement AddView      = st & currentDirContents %%~ handleListMovement e
+    goListMovement OpenView     = st & currentDirContents %%~ handleListMovement e
+
 commonEvent st (T.AppEvent Timer) = case MPD.stTime (st ^. playingStatus) of
   Nothing   -> M.continue st -- This happening means a bug or a concurrency problem
   Just time -> M.continue
@@ -417,3 +422,12 @@ commonEvent st (T.AppEvent Seek) = M.continue =<<
     loader id st' = MPD.seekId id (round . fst $ time) >> return st'
     time = fromMaybe (0,0) (st ^. playingStatus . stTimeL)
 commonEvent st _ = M.continue st
+
+
+-- | Handles common list movement events and returns the list (in the event monad)
+-- Key combos are not handled here as they also modify the state.
+handleListMovement :: Ord n => V.Event -> L.List n e -> T.EventM n (L.List n e)
+handleListMovement event list =
+  case event of
+    V.EvKey (V.KChar 'G') [] -> return $ L.listMoveTo (listEndIndex list) list
+    _ -> L.handleListEvent event list -- Brick's default handler

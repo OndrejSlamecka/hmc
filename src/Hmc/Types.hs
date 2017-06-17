@@ -50,7 +50,7 @@ stSongIDL = lens MPD.stSongID (\status newSongID -> status { MPD.stSongID = newS
 
 
 -- | Custom event in brick application
-data Event = Timer | Seek
+data Event = Timer | Seek deriving Eq
 
 
 -- | Determines which dialog is shown
