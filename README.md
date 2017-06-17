@@ -27,7 +27,7 @@ Controls
 * Switch between views: to playlist `F2` or `Esc`, to add `F3`, to open `F4`.
 * Exit with `q` or `^d`.
 * Update MPD database with `F5`.
-* `gg`, `G` to move to the top/bottom of a list.
+* `gg`, `G` to move to the top/bottom of a list, `^f`/`PageDown` and `^b`/`PageUp` to scroll by pages.
 
 
 ![Playlist view](screenshot.jpg)
@@ -39,4 +39,4 @@ TODO
 * Search with `/`.
 * Playing queue (like billy has).
 * Remember directory traversal in browser between `hmc` runs.
-* Faster scrolling with shift-arrows, `^f`/`PageDown` and `^b`/`PageUp`.
+* Faster scrolling with shift-arrows.
