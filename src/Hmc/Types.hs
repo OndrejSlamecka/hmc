@@ -24,11 +24,18 @@ module Hmc.Types
   , stTimeL
   , stStateL
   , stSongIDL
+  , TraversalStack
+  , parseTraversalStack
+  , printTraversalStack
   ) where
 
 import Protolude hiding (State)
 import Lens.Micro.TH (makeLenses)
 import Lens.Micro (lens, Lens')
+import Data.Text (pack)
+import qualified Text.Parsec as P
+import Data.String (fromString)
+import Data.Char (digitToInt)
 import System.Timer.Updatable (Updatable)
 import qualified Data.Map.Lazy as Map
 import qualified Network.MPD as MPD
@@ -66,6 +73,42 @@ data PlaylistMode = PlaylistPaths | PlaylistTags deriving (Eq)
 
 -- | Stores the path the user traversed in the file browser.
 type TraversalStack = [(Int, MPD.Path)]
+
+
+-- TODO: Remove this printing/parsing, instead save just the last part
+-- of the traversal stack and recreate the stack on load
+printTraversalStack :: TraversalStack -> Text
+printTraversalStack [] = ""
+printTraversalStack ((pos, path):ts) = this <> rest
+  where
+    this = "(" <> show pos <> ",'" <> (pack . escape . MPD.toString $ path) <> "')"
+    rest = printTraversalStack ts
+    escape [] = ""
+    escape ('\\':xs) = '\\':'\\':escape xs
+    escape ('\'':xs) = '\\':'\'':escape xs
+    escape (x   :xs) = x:escape xs
+
+
+parseTraversalStack :: Text -> TraversalStack
+parseTraversalStack input =
+  case P.parse go "hmc/traversal" input of
+    Left _   -> []
+    Right ts -> ts
+  where
+    go :: P.Parsec Text () TraversalStack
+    go = P.many1 $ P.between (P.char '(') (P.char ')') pair
+    number = foldl' (\a i -> a * 10 + digitToInt i) 0 <$> P.many1 P.digit
+    pair = do
+      pos <- number
+      P.char ','
+      pat <- path
+      return (pos, pat)
+    path = do
+      P.char '\''
+      chars <- P.many (escaped <|> P.noneOf "\\'")
+      P.char '\''
+      return $ fromString chars
+    escaped = P.char '\\' >> P.oneOf "\\'"
 
 
 -- | Brick application state

@@ -38,4 +38,3 @@ TODO
 
 * Search with `/`.
 * Playing queue (like billy has).
-* Remember directory traversal in browser between `hmc` runs.

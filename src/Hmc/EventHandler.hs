@@ -7,6 +7,7 @@ module Hmc.EventHandler
   ) where
 
 import Protolude hiding (State)
+import Unsafe (unsafeHead) -- use only when tested for non-emptiness
 import Hmc.Rendering
 import Hmc.Types
 import System.Timer.Updatable (replacer, renewIO)
@@ -23,6 +24,8 @@ import qualified Brick.Main as M
 import qualified Brick.Widgets.List as L
 import qualified Brick.BChan as C
 import qualified Brick.Types as T
+import System.FilePath ((</>), takeDirectory)
+import qualified System.Directory as D
 
 
 data SeekDirection = Backward | Forward
@@ -201,13 +204,66 @@ progressLoader t st =
 -- ACTIONS
 --
 
--- | On start just load playlist and state from MPD
--- and set the current song as select in the playlist
+
+-- | Returns the path of the file where traversal in browser is saved
+-- between hmc runs
+getTraversalFilePath :: MonadIO m => m FilePath
+getTraversalFilePath = liftIO $ D.getXdgDirectory D.XdgData "hmc/traversal"
+
+
+-- | Loads saved browser traversal into state
+--
+-- In case the file cannot be parsed or the directory cannot be loaded
+-- by MPD traversal then stack starts from the root.
+--
+-- The saved list positions might not match but Brick handles indices
+-- above the maximum index as the maximum index and for now I'm OK with
+-- ignoring wrong placement. (In the future this might be fixed by
+-- finding the indices by traversing the browser)
+loadSavedTraversal :: MonadIO m => State -> m State
+loadSavedTraversal state = do
+  filepath <- getTraversalFilePath
+  traversalFileExists <- liftIO $ D.doesFileExist filepath
+  if not traversalFileExists
+    then return state
+    else do
+      savedTraversal <- parseTraversalStack <$> liftIO (readFile filepath)
+      if null savedTraversal
+        then return state
+        else do
+          -- head is safe as the list is tested for emptiness above
+          let browserPath = snd . unsafeHead $ savedTraversal
+          result <- liftIO . withMPD $ MPD.lsInfo browserPath
+          return $ modifyState state (modifier savedTraversal) result
+
+  where
+    modifier savedTraversal state dirContents = state
+      & currentDirContents .~ L.list () (fromList (map Just dirContents)) 1
+      & traversal .~ savedTraversal
+
+
+-- | On start just load playlist and state from MPD,
+-- set the current song as selected in the playlist
+-- and load browser position from the last time
 onStart :: MonadIO m => State -> m State
 onStart st = do
-  st' <- runLoader st (loadState >=> loadPlaylist)
+  st' <- runLoader st (loadState >=> loadPlaylist) >>= loadSavedTraversal
   let position = fromMaybe 0 (join $ MPD.sgIndex <$> st' ^. currentSong)
   return $ st' & playlist %~ L.listMoveTo position
+
+
+-- | Saves browser traversal
+onExit :: MonadIO m => State -> m ()
+onExit state = do
+  filepath <- getTraversalFilePath
+  e <- liftIO . try $ createDirectory filepath :: MonadIO m => m (Either IOException ())
+  case e of
+    Left err -> return ()
+    Right _  -> do
+      liftIO $ writeFile filepath $ printTraversalStack (state ^. traversal)
+      return ()
+  where
+    createDirectory path = D.createDirectoryIfMissing True (takeDirectory path)
 
 
 --- Playlist actions
@@ -368,8 +424,8 @@ browserViewEvent st ev = commonEvent st ev
 
 commonEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
 commonEvent st (T.VtyEvent e) = case e of
-  V.EvKey (V.KChar 'q') [] -> M.halt st
-  V.EvKey (V.KChar 'd') [V.MCtrl] -> M.halt st
+  V.EvKey (V.KChar 'q') [] -> onExit st >> M.halt st
+  V.EvKey (V.KChar 'd') [V.MCtrl] -> onExit st >> M.halt st
   V.EvKey (V.KChar '\t') [] -> M.continue =<< playNext st
   V.EvKey (V.KFun 2) [] -> M.continue $ st & appView .~ PlaylistView
   V.EvKey V.KEsc []     -> M.continue $ st & appView .~ PlaylistView
