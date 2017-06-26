@@ -4,6 +4,7 @@ module Hmc.EventHandler
   ( handleEvent
   , onStart
   , tickerInterval
+  , listEndIndex
   ) where
 
 import Protolude hiding (State)
@@ -12,7 +13,7 @@ import Hmc.Rendering
 import Hmc.Types
 import System.Timer.Updatable (replacer, renewIO)
 import Lens.Micro ((.~), (^.), (%~), (<&>))
-import qualified Data.Text as Text (length)
+import qualified Data.Text as Text
 import qualified Network.MPD as MPD
 import Network.MPD (withMPD)
 import Data.Vector (fromList)
@@ -24,8 +25,11 @@ import qualified Brick.Main as M
 import qualified Brick.Widgets.List as L
 import qualified Brick.BChan as C
 import qualified Brick.Types as T
-import System.FilePath ((</>), takeDirectory)
+import qualified Brick.Widgets.Edit as E
+import System.FilePath ((</>), takeDirectory, takeBaseName)
 import qualified System.Directory as D
+import Data.String (fromString)
+import Data.List (elemIndex)
 
 
 data SeekDirection = Backward | Forward
@@ -33,6 +37,13 @@ data SeekDirection = Backward | Forward
 
 -- | Microlens doesn't have this
 (%%~) = identity
+
+
+-- | Extracts path from MPD's LsResult
+lsResultPath :: MPD.LsResult -> FilePath
+lsResultPath (MPD.LsSong p) = MPD.toString . MPD.sgFilePath $ p
+lsResultPath (MPD.LsDirectory p) = MPD.toString p
+lsResultPath (MPD.LsPlaylist p) = MPD.toString p
 
 
 -- | Every tickerInterval microseconds a Timer event is sent and the
@@ -70,24 +81,23 @@ playlistToTagsMaxWidths tagsAndWidths playlist = fromMaybe Map.empty
     tagLengthMaps = map (tagsToLengths . MPD.sgTags) playlist
     -- If the list of values is empty the length is set to 20 to leave
     -- some space for an error text (this approach should be improved)
-    tagsToLengths = Map.map (\vs -> fromMaybe 20 (Text.length <$> MPD.toText <$> head vs))
+    tagsToLengths = Map.map (\vs -> fromMaybe 20 (Text.length . MPD.toText <$> head vs))
 
 
 -- | Modify playlist and return the new playlist and state
 --
--- The playlist is modified based on the given Maybe LsResult, in case
--- of `Nothing` it adds all music.
+-- The playlist is modified based on the given LsResult,
+-- the "All Music" option is just "" dir so it works as usual.
 --
 -- State is modified just in case of open, not add, because new song has started
 -- playing.
 modifyPlaylist :: MonadIO m =>
-     State -> Maybe MPD.LsResult -> m (MPD.Response ([MPD.Song], State))
+     State -> MPD.LsResult -> m (MPD.Response ([MPD.Song], State))
 modifyPlaylist st selection = liftIO $ withMPD $ do
   paths <- case selection of
-      Nothing -> return [""]
-      Just (MPD.LsDirectory path) -> return [path]
-      Just (MPD.LsSong song) -> return [MPD.sgFilePath song]
-      Just (MPD.LsPlaylist name) -> MPD.listPlaylist name
+      MPD.LsDirectory path -> return [path]
+      MPD.LsSong song      -> return [MPD.sgFilePath song]
+      MPD.LsPlaylist name  -> MPD.listPlaylist name
 
   when (st ^. appView == OpenView) (void MPD.clear)
   void $ forM_ paths MPD.add
@@ -157,7 +167,7 @@ loadPlaylist state = do
   playlistInfo' <- MPD.playlistInfo Nothing
 
   return $ state
-    & playlist .~ L.list () (fromList playlistInfo') 1
+    & playlist .~ L.list Playlist (fromList playlistInfo') 1
     & playlistTagsMaxWidths .~ playlistToTagsMaxWidths (state ^. tagsAndWidths) playlistInfo'
 
 
@@ -170,15 +180,6 @@ loadState state = do
   return $ state
     & playingStatus .~ status'
     & currentSong .~ currentSong'
-
-
-loadDirectory state = do
-  dirContents' <- case MPD.lsInfo . snd <$> headMay (state ^. traversal) of
-    Nothing -> return [Nothing]
-    Just list -> map Just <$> list -- list is in MPD, thus <$>
-
-  return $ state
-    & currentDirContents .~ L.list () (fromList dirContents') 1
 
 
 -- | Modify progress of playing of current song and
@@ -215,11 +216,6 @@ getTraversalFilePath = liftIO $ D.getXdgDirectory D.XdgData "hmc/traversal"
 --
 -- In case the file cannot be parsed or the directory cannot be loaded
 -- by MPD traversal then stack starts from the root.
---
--- The saved list positions might not match but Brick handles indices
--- above the maximum index as the maximum index and for now I'm OK with
--- ignoring wrong placement. (In the future this might be fixed by
--- finding the indices by traversing the browser)
 loadSavedTraversal :: MonadIO m => State -> m State
 loadSavedTraversal state = do
   filepath <- getTraversalFilePath
@@ -227,19 +223,10 @@ loadSavedTraversal state = do
   if not traversalFileExists
     then return state
     else do
-      savedTraversal <- parseTraversalStack <$> liftIO (readFile filepath)
-      if null savedTraversal
-        then return state
-        else do
-          -- head is safe as the list is tested for emptiness above
-          let browserPath = snd . unsafeHead $ savedTraversal
-          result <- liftIO . withMPD $ MPD.lsInfo browserPath
-          return $ modifyState state (modifier savedTraversal) result
-
-  where
-    modifier savedTraversal state dirContents = state
-      & currentDirContents .~ L.list () (fromList (map Just dirContents)) 1
-      & traversal .~ savedTraversal
+      savedTraversal <- liftIO (Text.unpack <$> readFile filepath)
+      -- TODO: here we assume that savedTraversal is a correct path,
+      -- that should be checked
+      loadDirectory state (fromString savedTraversal) (const 0)
 
 
 -- | On start just load playlist and state from MPD,
@@ -260,7 +247,7 @@ onExit state = do
   case e of
     Left err -> return ()
     Right _  -> do
-      liftIO $ writeFile filepath $ printTraversalStack (state ^. traversal)
+      liftIO $ writeFile filepath $ Text.pack (state ^. traversal)
       return ()
   where
     createDirectory path = D.createDirectoryIfMissing True (takeDirectory path)
@@ -332,60 +319,132 @@ seek st direction =
 --- Browser action
 
 
--- | Proceed to the selected directory
-enterDirectory :: MonadIO m => State -> (Int, MPD.Path) -> m State
-enterDirectory st (pos, dir) =
-  modifyState st updateDirContents
-  <$> liftIO (withMPD $ map Just <$> MPD.lsInfo dir)
+-- | Loads the selected directory and updates traversal stack
+loadDirectory :: MonadIO m => State -> MPD.Path -> ([MPD.LsResult] -> Int) -> m State
+loadDirectory st dir position = do
+  list <- liftIO . withMPD $ MPD.lsInfo dir
+  -- In the topmost directory add "All Music" item
+  let list' = if dir == ""
+                then fmap addAllItem list
+                else list
+  return $ modifyState st updateDirContents list'
   where
-    traversal' = (pos, dir):(st ^. traversal)
     updateDirContents st contents = st
-      & currentDirContents .~ L.list () (fromList contents) 1
-      & traversal .~ traversal'
+      & browserListUnderlying .~ contents
+      & browserList .~
+        L.listMoveTo (position contents) (L.list Browser (fromList contents) 1)
+      & traversal .~ MPD.toString dir
+    addAllItem = (MPD.LsDirectory "" :)
 
 
 -- | Move one up in the file tree
--- If there is nothing above this position, then create a dummy
--- "All Music" list (represented with [Nothing] here)
 leaveDirectory :: MonadIO m => State -> m State
 leaveDirectory st =
-  modifyState st updateContents
-  <$> case directoryAbove of
-        Nothing -> return $ return [Nothing]
-        Just dir -> liftIO (withMPD $ map Just <$> MPD.lsInfo dir)
+  if thisDirectory == directoryAbove
+    then return st
+    else loadDirectory st (fromString directoryAbove) position
   where
-    directoryAbove = atMay (snd <$> st ^. traversal) 1
-    position = headDef 0 (fst <$> st ^. traversal)
-    updateContents st' contents = st'
-      & currentDirContents .~
-        L.listMoveTo position (L.list () (fromList contents) 1)
-      & traversal .~ fromMaybe [] (tailMay (st ^. traversal))
+    directoryAbove = directoryOneUp thisDirectory
+    thisDirectory = st ^. traversal
+    position list = fromMaybe 0
+                  $ thisDirectory `elemIndex` map lsResultPath list
 
 
 -- | Load selected item into the playlist
-browserSelect :: MonadIO m => State -> (Int, Maybe MPD.LsResult) -> m State
+browserSelect :: MonadIO m => State -> (Int, MPD.LsResult) -> m State
 browserSelect st (position, selection) =
   modifyState st updatePlaylist
   <$> modifyPlaylist st selection
   where
     updatePlaylist _ (list, newState) = newState
       & appView .~ PlaylistView
-      & playlist .~ L.list () (fromList list) 1
+      & playlist .~ L.list Playlist (fromList list) 1
 
 
 --- EVENT HANDLERS
 
 -- | Handler is chosen according to the current view. If the event is
 -- not specific for the view it is then passed to `commonEvent` handler
-handleEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
-handleEvent state event = go (state ^. appView) state event
+handleEvent :: State
+            -> T.BrickEvent WidgetName Event
+            -> T.EventM WidgetName (T.Next State)
+handleEvent state event =
+  case (event, state ^. searchInput) of
+    (T.VtyEvent _, Just input) -> handleSearchEvent state event input
+    _ -> handleViewEvent state event
+
+
+handleViewEvent state = go (state ^. appView) state
   where
     go PlaylistView = playlistViewEvent
     go AddView      = browserViewEvent
     go OpenView     = browserViewEvent
 
 
-playlistViewEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
+runSearchLoader state search =
+  runLoader state (searchLoader (state ^. appView) search)
+
+
+searchLoader PlaylistView search state = do
+  pl <- MPD.playlistSearch (MPD.Title MPD.=? search')
+  return $ state & playlist .~ L.list Playlist (fromList pl) 1
+  where search' = fromString . Text.unpack $ search
+
+
+searchLoader _ search state = return $ state
+  & browserList .~ L.list Browser (fromList l) 1
+  where
+    l = filter predicate (state ^. browserListUnderlying)
+    predicate = match search . fromString . lsResultPath
+
+
+leaveSearch PlaylistView state = do
+  state' <- runSearchLoader state ""
+  let chosenSong = fromMaybe 0 (join $ MPD.sgIndex <$> state' ^. currentSong)
+  return $ state'
+    & playlist %~ L.listMoveTo chosenSong
+    & searchInput .~ Nothing
+
+
+leaveSearch _ state = return $ state
+  & browserList .~ L.list Browser v 1
+  & searchInput .~ Nothing
+  where v = fromList (state ^. browserListUnderlying)
+
+
+handleSearchEvent :: State
+                  -> T.BrickEvent WidgetName Event
+                  -> E.Editor Text WidgetName
+                  -> T.EventM WidgetName (T.Next State)
+handleSearchEvent state e@(T.VtyEvent event) input =
+  case event of
+    V.EvKey V.KEsc [] -> M.continue =<< leaveSearch (state ^. appView) state
+    V.EvKey V.KRight [] ->
+      case state ^. appView of
+        PlaylistView -> handleViewEvent state e
+        _            -> M.continue
+                    =<< leaveSearch (state ^. appView)
+                    =<< enterDirectory state
+    V.EvKey V.KUp [] -> handleViewEvent state e
+    V.EvKey V.KDown [] -> handleViewEvent state e
+    V.EvKey V.KEnter [] -> handleViewEvent state e
+    _ -> M.continue =<< do
+      input' <- E.handleEditorEvent event input
+      let stateNewInput = state & searchInput .~ Just input'
+      let search = fromMaybe "" . head $ E.getEditContents input'
+      runSearchLoader stateNewInput search
+
+
+-- | Matches against the files' base name, case insensitive, looks for
+-- match anywhere
+-- TODO: Get rid of the unpack and pack to speed it up.
+match needle haystack = Text.toLower needle `Text.isInfixOf` Text.toLower base
+  where base = Text.pack . takeBaseName . Text.unpack $ haystack
+
+
+playlistViewEvent :: State
+                  -> T.BrickEvent WidgetName Event
+                  -> T.EventM WidgetName (T.Next State)
 playlistViewEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KChar 'g') [] -> M.continue =<< handleKeyCombo 'g' 'g' move st
     where move st = return $ st & playlist %~ L.listMoveTo 0
@@ -401,40 +460,54 @@ playlistViewEvent st (T.VtyEvent e) = case e of
 playlistViewEvent st ev = commonEvent st ev
 
 
-browserViewEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
+-- | Enters the directory chosen in browser.
+-- If there's nothing chosen does nothing,
+-- if something else than a directory is chosen, does nothing.
+enterDirectory state = maybe (return state) enter selection
+  where
+    selection :: Maybe MPD.LsResult
+    selection = snd <$> L.listSelectedElement (state ^. browserList)
+    enter (MPD.LsDirectory dir) = loadDirectory state dir (const 0)
+    enter _                     = return state
+
+
+browserViewEvent :: State
+                 -> T.BrickEvent WidgetName Event
+                 -> T.EventM WidgetName (T.Next State)
 browserViewEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KChar 'g') [] -> M.continue =<< handleKeyCombo 'g' 'g' move st
-    where move st = return $ st & currentDirContents %~ L.listMoveTo 0
+    where move st = return $ st & browserList %~ L.listMoveTo 0
   V.EvKey V.KLeft [] -> M.continue =<< leaveDirectory st
-  V.EvKey V.KRight [] -> M.continue =<< maybe (return st) enter selection
-    where
-      selection :: Maybe (Int, Maybe MPD.LsResult)
-      selection = L.listSelectedElement $ st ^. currentDirContents
-      enter (pos, Just (MPD.LsDirectory dir)) = enterDirectory st (pos, dir)
-      enter (pos, Nothing)                    = enterDirectory st (0, "")
-      enter _                                 = return st
-
+  V.EvKey V.KRight [] -> M.continue =<< enterDirectory st
   V.EvKey V.KEnter [] ->
     M.continue =<< maybe (return st) (browserSelect st) selection
-    where selection = L.listSelectedElement $ st ^. currentDirContents
+    where selection = L.listSelectedElement $ st ^. browserList
 
   _ -> commonEvent st (T.VtyEvent e)
 browserViewEvent st ev = commonEvent st ev
 
 
-commonEvent :: State -> T.BrickEvent () Event -> T.EventM () (T.Next State)
+commonEvent :: State
+            -> T.BrickEvent WidgetName Event
+            -> T.EventM WidgetName (T.Next State)
 commonEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KChar 'q') [] -> onExit st >> M.halt st
   V.EvKey (V.KChar 'd') [V.MCtrl] -> onExit st >> M.halt st
   V.EvKey (V.KChar '\t') [] -> M.continue =<< playNext st
   V.EvKey (V.KFun 2) [] -> M.continue $ st & appView .~ PlaylistView
-  V.EvKey V.KEsc []     -> M.continue $ st & appView .~ PlaylistView
   V.EvKey (V.KFun 3) [] -> M.continue $ st & appView .~ AddView
   V.EvKey (V.KFun 4) [] -> M.continue $ st & appView .~ OpenView
   V.EvKey (V.KFun 5) [] -> M.continue =<< runLoader st loader
     where loader st' = MPD.update Nothing
                        >> MPD.idle [MPD.DatabaseS]
                        >> loadState st'
+
+  V.EvKey (V.KChar '/') [] -> M.continue $ st
+    & searchInput .~ Just (E.editorText Search renderSearchContent (Just 1) "")
+  V.EvKey V.KEsc []     -> M.continue $
+    case st ^. searchInput of
+      Nothing -> st & appView .~ PlaylistView
+      Just _  -> st & searchInput .~ Nothing
 
   V.EvKey (V.KChar ' ') [] ->
     case st ^. mpdError of
@@ -467,8 +540,8 @@ commonEvent st (T.VtyEvent e) = case e of
   where
     moveListAndContinue = M.continue =<< goListMovement (st ^. appView)
     goListMovement PlaylistView = st & playlist %%~ handleListMovement e
-    goListMovement AddView      = st & currentDirContents %%~ handleListMovement e
-    goListMovement OpenView     = st & currentDirContents %%~ handleListMovement e
+    goListMovement AddView      = st & browserList %%~ handleListMovement e
+    goListMovement OpenView     = st & browserList %%~ handleListMovement e
 
 commonEvent st (T.AppEvent Timer) = case MPD.stTime (st ^. playingStatus) of
   Nothing   -> M.continue st -- This happening means a bug or a concurrency problem

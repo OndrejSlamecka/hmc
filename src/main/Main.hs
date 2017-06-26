@@ -23,7 +23,7 @@ main = do
   void $ M.customMain (V.mkVty V.defaultConfig) (Just chan) theApp (initialState chan)
 
 
-theApp :: M.App State Event ()
+theApp :: M.App State Event WidgetName
 theApp = M.App
   { M.appDraw = drawUI
   , M.appHandleEvent = handleEvent

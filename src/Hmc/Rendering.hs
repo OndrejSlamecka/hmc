@@ -3,12 +3,13 @@
 module Hmc.Rendering
   ( drawUI
   , playingSongAttr
+  , renderSearchContent
   ) where
 
 import Hmc.Types
 import Protolude hiding (State, length)
 import Lens.Micro ((.~), (^.), (%~))
-import Data.Text (length, pack, take)
+import Data.Text (length, pack, take, unlines)
 import qualified Data.Map.Lazy as Map (lookup)
 import qualified Network.MPD as MPD
 import qualified Brick.AttrMap as A
@@ -18,6 +19,7 @@ import qualified Brick.Types as T
 import qualified Brick.Util as U
 import qualified Brick.BChan as C
 import qualified Brick.Widgets.Center as Center
+import qualified Brick.Widgets.Edit as E
 import Brick.Widgets.Border (hBorder, hBorderWithLabel)
 import Brick.Widgets.Core
   ( txt
@@ -67,7 +69,7 @@ timerFormat s = minutes s <> ":" <> seconds s
 
 
 -- | Main rendering function
-drawUI :: State -> [T.Widget ()]
+drawUI :: State -> [T.Widget WidgetName]
 drawUI appState = case appState ^. mpdError of
   Just error ->
     [ Center.vCenter $ vBox $ map (Center.hCenter . txt)
@@ -75,12 +77,17 @@ drawUI appState = case appState ^. mpdError of
       , "Spacebar to retry, Esc to quit"
       ]
     ]
-  Nothing ->
-    [ vBox
+  Nothing -> [ vBox body ]
+
+  where
+    body = case appState ^. searchInput of
+      Nothing    -> justBody
+      Just input -> bodyAndSearch input
+    justBody =
       [ renderView appState
       , hBorderWithLabel $ renderProgress appState
       ]
-    ]
+    bodyAndSearch input = justBody ++ [ hBox [ txt "/", E.renderEditor True input ] ]
 
 
 --
@@ -133,12 +140,17 @@ renderSong appState lastTag song
     spacing = 3
     tagsMaxWidths = appState ^. playlistTagsMaxWidths
 
+
 renderBrowser title appState = vBox
   [ hBorderWithLabel (txt $ " " <> title <> " " )
-  , L.renderList renderItem True (appState ^. currentDirContents)
+  , L.renderList renderItem True (appState ^. browserList)
   ]
   where
-    renderItem selected (Just (MPD.LsDirectory p)) = txt (MPD.toText p)
-    renderItem selected (Just (MPD.LsSong p)) = txt (MPD.toText $ MPD.sgFilePath p)
+    renderItem selected (MPD.LsDirectory "") = txt "All Music"
+    renderItem selected (MPD.LsDirectory p)  = txt (MPD.toText p)
+    renderItem selected (MPD.LsSong p) = txt (MPD.toText $ MPD.sgFilePath p)
     -- TODO: playlist
-    renderItem selected Nothing = txt "All Music"
+
+
+renderSearchContent :: [Text] -> T.Widget a
+renderSearchContent = txt . fromMaybe "" . head

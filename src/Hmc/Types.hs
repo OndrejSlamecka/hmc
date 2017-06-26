@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-} -- just for makeLenses
 
--- TODO: rename State/State, View/View, Event/Event
 module Hmc.Types
-  ( State(..)
+  ( WidgetName(..)
+  , State(..)
   , mpdError
   , eventChannel
   , playingStatus
@@ -15,7 +15,8 @@ module Hmc.Types
   , tagsAndWidths
   , currentSong
   , keyCombo
-  , currentDirContents
+  , browserListUnderlying
+  , browserList
   , traversal
   , initialState
   , View(..)
@@ -24,16 +25,14 @@ module Hmc.Types
   , stTimeL
   , stStateL
   , stSongIDL
-  , TraversalStack
-  , parseTraversalStack
-  , printTraversalStack
+  , searchInput
+  , directoryOneUp
   ) where
 
 import Protolude hiding (State)
 import Lens.Micro.TH (makeLenses)
 import Lens.Micro (lens, Lens')
-import Data.Text (pack)
-import qualified Text.Parsec as P
+import Data.Text (null, unpack, pack, split, append)
 import Data.String (fromString)
 import Data.Char (digitToInt)
 import System.Timer.Updatable (Updatable)
@@ -41,8 +40,10 @@ import qualified Data.Map.Lazy as Map
 import qualified Network.MPD as MPD
 import qualified Brick.Widgets.List as L
 import qualified Brick.BChan as C
+import Brick.Widgets.Edit (Editor)
 import Data.Vector (fromList)
 import Data.Time.Clock.POSIX (POSIXTime)
+import System.FilePath ((</>), takeDirectory)
 
 
 -- Lenses for MPD.Status
@@ -54,6 +55,11 @@ stStateL = lens MPD.stState (\status newState -> status { MPD.stState = newState
 
 stSongIDL :: Lens' MPD.Status (Maybe MPD.Id)
 stSongIDL = lens MPD.stSongID (\status newSongID -> status { MPD.stSongID = newSongID })
+
+
+-- | Names of widgets for Brick
+data WidgetName = Playlist | Browser | Search
+  deriving (Eq, Ord, Show)
 
 
 -- | Custom event in brick application
@@ -71,44 +77,11 @@ data View = PlaylistView | AddView | OpenView deriving (Eq)
 data PlaylistMode = PlaylistPaths | PlaylistTags deriving (Eq)
 
 
--- | Stores the path the user traversed in the file browser.
-type TraversalStack = [(Int, MPD.Path)]
-
-
--- TODO: Remove this printing/parsing, instead save just the last part
--- of the traversal stack and recreate the stack on load
-printTraversalStack :: TraversalStack -> Text
-printTraversalStack [] = ""
-printTraversalStack ((pos, path):ts) = this <> rest
-  where
-    this = "(" <> show pos <> ",'" <> (pack . escape . MPD.toString $ path) <> "')"
-    rest = printTraversalStack ts
-    escape [] = ""
-    escape ('\\':xs) = '\\':'\\':escape xs
-    escape ('\'':xs) = '\\':'\'':escape xs
-    escape (x   :xs) = x:escape xs
-
-
-parseTraversalStack :: Text -> TraversalStack
-parseTraversalStack input =
-  case P.parse go "hmc/traversal" input of
-    Left _   -> []
-    Right ts -> ts
-  where
-    go :: P.Parsec Text () TraversalStack
-    go = P.many1 $ P.between (P.char '(') (P.char ')') pair
-    number = foldl' (\a i -> a * 10 + digitToInt i) 0 <$> P.many1 P.digit
-    pair = do
-      pos <- number
-      P.char ','
-      pat <- path
-      return (pos, pat)
-    path = do
-      P.char '\''
-      chars <- P.many (escaped <|> P.noneOf "\\'")
-      P.char '\''
-      return $ fromString chars
-    escaped = P.char '\\' >> P.oneOf "\\'"
+-- | Like takeDirectory but replaces "." with "",
+-- to make it compatible with MPD's lsInfo
+directoryOneUp :: FilePath -> FilePath
+directoryOneUp d = if oneUp == "." then "" else oneUp
+  where oneUp = takeDirectory d
 
 
 -- | Brick application state
@@ -123,7 +96,7 @@ data State = State
   , _appView :: View
   , _seekTimer :: Maybe (Updatable ())
 
-  , _playlist :: L.List () MPD.Song
+  , _playlist :: L.List WidgetName MPD.Song
   , _playlistTagsMaxWidths :: Map MPD.Metadata Int
   -- ^ Maximum length of given tag value in the current playlist,
   -- if there is no tag value for the given tag no value is in the map
@@ -136,12 +109,19 @@ data State = State
   , _currentSong :: Maybe MPD.Song
   , _keyCombo :: Maybe (Char, POSIXTime)
 
-  , _currentDirContents :: L.List () (Maybe MPD.LsResult)
-  -- ^ If an item is Nothing then it represents the "all music" option
-  -- The current implementation places this "all music" list above the
-  -- file tree.
-  --
-  , _traversal :: TraversalStack
+  , _browserListUnderlying :: [MPD.LsResult]
+  -- ^ The list from which browserList is made of,
+  -- used as a list to be searched in by the search feature
+  -- TODO: Wouldn't a Vector be a better choice here?
+  , _browserList :: L.List WidgetName MPD.LsResult
+  -- ^ The Brick.Widgets.List variant of the above,
+  -- it differs only during search when this is limited to the searched
+  -- items (while browserListUnderlying keeps the content loaded from
+  -- "traversal" directory).
+
+  , _traversal :: FilePath
+  -- ^ Where is the browser in the file tree
+  , _searchInput :: Maybe (Editor Text WidgetName)
   }
 
 initialState :: C.BChan Event -> State
@@ -158,12 +138,14 @@ initialState chan = State
     , (MPD.Title, 120)
     ]
   , _seekTimer = Nothing
-  , _playlist = L.list () mempty 1
+  , _playlist = L.list Playlist mempty 1
   , _playlistTagsMaxWidths = Map.empty
   , _currentSong = Nothing
   , _keyCombo = Nothing
-  , _currentDirContents = L.list () (fromList [Nothing]) 1
-  , _traversal = []
+  , _browserListUnderlying = []
+  , _browserList = L.list Browser (fromList []) 1
+  , _traversal = ""
+  , _searchInput = Nothing
   }
 
 makeLenses ''State

@@ -6,8 +6,7 @@ What is `hmc`
 client with a simple interface inspired by
 [billy](http://www.sheepfriends.com/index-page=billy.html).
 
-Warning: This program is unfinished, work is in progress. See TODO below for a
-list of key features missing.
+Warning: This program is in an early stage of development.
 
 Install
 -------
@@ -28,6 +27,9 @@ Controls
 * Exit with `q` or `^d`.
 * Update MPD database with `F5`.
 * `gg`, `G` to move to the top/bottom of a list, `^f`/`PageDown` and `^b`/`PageUp` to scroll by pages, shift-arrows to scroll by 5 items.
+* Search with `/`, leave by `Esc`. In browser the search shows items of
+  which the searched string is a part of, also right arrow (still) enters the
+  selected directory.
 
 
 ![Playlist view](screenshot.jpg)
@@ -36,5 +38,5 @@ Controls
 TODO
 ----
 
-* Search with `/`.
 * Playing queue (like billy has).
+* Pause music on exit. Add `^q` to exit without pause.
