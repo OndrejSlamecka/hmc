@@ -1,0 +1,152 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+module Hmc.Browser
+  ( renderBrowser
+  , browserViewEvent
+  , saveTraversal
+  , loadSavedTraversal
+  , enterDirectory
+  ) where
+
+import Protolude hiding (State)
+import Hmc.Common
+import Hmc.Types
+import Hmc.Playlist
+import Data.Text (pack, unpack)
+import Data.List (elemIndex)
+import Data.Vector (fromList)
+import Data.String (fromString)
+import System.FilePath ((</>), takeDirectory, takeBaseName)
+import Lens.Micro ((.~), (^.), (%~), (<&>))
+import qualified Network.MPD
+import qualified System.Directory as D
+import qualified Network.MPD as MPD
+import qualified Brick.Main as M
+import qualified Brick.Widgets.List as L
+import qualified Brick.Types as T
+import qualified Graphics.Vty as V
+import Brick.Widgets.Border (hBorderWithLabel)
+import Brick.Widgets.Core
+  ( txt
+  , vBox
+  )
+
+
+-- | Render the list. Directory "" is interpreted as "All Music" item
+renderBrowser title appState = vBox
+  [ hBorderWithLabel (txt $ " " <> title <> " " )
+  , L.renderList renderItem True (appState ^. browserList)
+  ]
+  where
+    renderItem selected (MPD.LsDirectory "") = txt "All Music"
+    renderItem selected (MPD.LsDirectory p)  = txt (MPD.toText p)
+    renderItem selected (MPD.LsSong p) = txt (MPD.toText $ MPD.sgFilePath p)
+    -- TODO: playlist
+
+
+-- | Returns the path of the file where traversal in browser is saved
+-- between hmc runs
+getTraversalFilePath :: MonadIO m => m FilePath
+getTraversalFilePath = liftIO $ D.getXdgDirectory D.XdgData "hmc/traversal"
+
+
+-- | Saves position in browser to the file
+saveTraversal state = do
+  filepath <- getTraversalFilePath
+  e <- liftIO . try $ createDirectory filepath :: MonadIO m => m (Either IOException ())
+  case e of
+    Left err -> return ()
+    Right _  -> do
+      liftIO $ writeFile filepath $ pack (state ^. traversal)
+      return ()
+  where
+    createDirectory path = D.createDirectoryIfMissing True (takeDirectory path)
+
+
+-- | Loads saved browser traversal into state
+--
+-- In case the file cannot be parsed or the directory cannot be loaded
+-- by MPD traversal then stack starts from the root.
+loadSavedTraversal :: MonadIO m => State -> m State
+loadSavedTraversal state = do
+  filepath <- getTraversalFilePath
+  traversalFileExists <- liftIO $ D.doesFileExist filepath
+  if not traversalFileExists
+    then return state
+    else do
+      savedTraversal <- liftIO (unpack <$> readFile filepath)
+      -- TODO: here we assume that savedTraversal is a correct path,
+      -- that should be checked
+      loadDirectory state (fromString savedTraversal) (const 0)
+
+
+-- | Loads the selected directory and updates traversal stack
+loadDirectory :: MonadIO m => State -> MPD.Path -> ([MPD.LsResult] -> Int) -> m State
+loadDirectory st dir position = do
+  list <- liftIO . MPD.withMPD $ MPD.lsInfo dir
+  -- In the topmost directory add "All Music" item
+  let list' = if dir == ""
+                then fmap addAllItem list
+                else list
+  return $ modifyState st updateDirContents list'
+  where
+    updateDirContents st contents = st
+      & browserListUnderlying .~ contents
+      & browserList .~
+        L.listMoveTo (position contents) (L.list Browser (fromList contents) 1)
+      & traversal .~ MPD.toString dir
+    addAllItem = (MPD.LsDirectory "" :)
+
+
+-- | Move one up in the file tree
+leaveDirectory :: MonadIO m => State -> m State
+leaveDirectory st =
+  if thisDirectory == directoryAbove
+    then return st
+    else loadDirectory st (fromString directoryAbove) position
+  where
+    directoryAbove = directoryOneUp thisDirectory
+    thisDirectory = st ^. traversal
+    position list = fromMaybe 0
+                  $ thisDirectory `elemIndex` map lsResultPath list
+
+
+-- | Load selected item into the playlist
+browserSelect :: MonadIO m => State -> (Int, MPD.LsResult) -> m State
+browserSelect st (position, selection) =
+  modifyState st updatePlaylist
+  <$> modifyPlaylist st selection
+  where
+    updatePlaylist _ (list, newState) = newState
+      & appView .~ PlaylistView
+      & playlist .~ L.list Playlist (fromList list) 1
+
+
+-- | Enters the directory chosen in browser.
+-- If there's nothing chosen does nothing,
+-- if something else than a directory is chosen, does nothing.
+enterDirectory :: MonadIO m => State -> m State
+enterDirectory state = maybe (return state) enter selection
+  where
+    selection :: Maybe MPD.LsResult
+    selection = snd <$> L.listSelectedElement (state ^. browserList)
+    enter (MPD.LsDirectory dir) = loadDirectory state dir (const 0)
+    enter _                     = return state
+
+
+-- | Handles events specific for the browser view.
+-- Returns Nothing if there is no behavior specified for the event.
+browserViewEvent :: State
+                 -> T.BrickEvent WidgetName Event
+                 -> Maybe (T.EventM WidgetName (T.Next State))
+browserViewEvent st (T.VtyEvent e) = case e of
+  V.EvKey (V.KChar 'g') [] -> Just $ M.continue =<< handleKeyCombo 'g' 'g' move st
+    where move st = return $ st & browserList %~ L.listMoveTo 0
+  V.EvKey V.KLeft [] -> Just $ M.continue =<< leaveDirectory st
+  V.EvKey V.KRight [] -> Just $ M.continue =<< enterDirectory st
+  V.EvKey V.KEnter [] ->
+    Just $ M.continue =<< maybe (return st) (browserSelect st) selection
+    where selection = L.listSelectedElement $ st ^. browserList
+
+  _ -> Nothing
+browserViewEvent st ev = Nothing

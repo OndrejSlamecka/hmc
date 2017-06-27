@@ -1,7 +1,7 @@
-module Hmc.EventHandlerSpec (main, spec) where
+module Hmc.CommonSpec (main, spec) where
 
 import Protolude
-import Hmc.EventHandler
+import Hmc.Common
 import Test.Hspec
 import qualified Brick.Widgets.List as L
 import Data.Vector (fromList)
@@ -15,6 +15,21 @@ main = hspec spec
 
 spec :: Spec
 spec = do
+  describe "directoryOneUp" $ do
+    it "on empty string returns empty string" $
+      directoryOneUp "" `shouldBe` ""
+
+    it "on \"anything\" returns empty string" $
+      directoryOneUp "anything" `shouldBe` ""
+
+    -- make sure . is not an exception to the above case
+    it "on \".\" returns empty string" $
+      directoryOneUp "." `shouldBe` ""
+
+    it "on \"a/b\" returns \"a\"" $
+      directoryOneUp "a/b" `shouldBe` "a"
+
+
   describe "listEndIndex" $ do
     it "on empty list returns -1" $
       listEndIndex (L.list () (fromList []) 1) `shouldBe` -1

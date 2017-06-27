@@ -2,32 +2,35 @@
 {-# LANGUAGE TemplateHaskell #-} -- just for makeLenses
 
 module Hmc.Types
-  ( WidgetName(..)
+  ( stTimeL
+  , stStateL
+  , stSongIDL
+  , WidgetName(..)
+  , Event(..)
+  , BrowserMode(..)
+  , browserModeName
+  , View(..)
+  , PlaylistMode(..)
   , State(..)
   , mpdError
   , eventChannel
   , playingStatus
   , appView
+  , playlistMode
+  , tagsAndWidths
   , seekTimer
   , playlist
   , playlistTagsMaxWidths
-  , playlistMode
-  , tagsAndWidths
   , currentSong
   , keyCombo
   , browserListUnderlying
   , browserList
   , traversal
-  , initialState
-  , View(..)
-  , PlaylistMode(..)
-  , Event(..)
-  , stTimeL
-  , stStateL
-  , stSongIDL
   , searchInput
-  , directoryOneUp
+
+  , initialState
   ) where
+
 
 import Protolude hiding (State)
 import Lens.Micro.TH (makeLenses)
@@ -43,7 +46,6 @@ import qualified Brick.BChan as C
 import Brick.Widgets.Edit (Editor)
 import Data.Vector (fromList)
 import Data.Time.Clock.POSIX (POSIXTime)
-import System.FilePath ((</>), takeDirectory)
 
 
 -- Lenses for MPD.Status
@@ -66,22 +68,22 @@ data WidgetName = Playlist | Browser | Search
 data Event = Timer | Seek deriving Eq
 
 
+-- | BrowserAdd and BrowserOpen display browser to add/open files to/in
+-- the playlist
+data BrowserMode = BrowserAdd | BrowserOpen deriving (Eq)
+
+
+browserModeName :: BrowserMode -> Text
+browserModeName BrowserAdd  = "Add"
+browserModeName BrowserOpen = "Open"
+
+
 -- | Determines which dialog is shown
---
--- AddView and OpenView display browser to add/open files to/in the
--- playlist
-data View = PlaylistView | AddView | OpenView deriving (Eq)
+data View = PlaylistView | BrowserView BrowserMode deriving (Eq)
 
 
 -- | Display songs as paths or with ID3 tags
 data PlaylistMode = PlaylistPaths | PlaylistTags deriving (Eq)
-
-
--- | Like takeDirectory but replaces "." with "",
--- to make it compatible with MPD's lsInfo
-directoryOneUp :: FilePath -> FilePath
-directoryOneUp d = if oneUp == "." then "" else oneUp
-  where oneUp = takeDirectory d
 
 
 -- | Brick application state
