@@ -7,6 +7,7 @@ module Hmc.Playlist
   , loadPlaylist
   , play
   , playNext
+  , playSelectedSong
   , playlistViewEvent
   ) where
 
@@ -166,6 +167,15 @@ playNext st = runLoader st loader
       return $ st'' & playlist %~ L.listMoveTo (currentSongPosition st'')
 
 
+-- | If there's a song selected, plays it, otherwise returns the given
+-- state.
+playSelectedSong :: MonadIO m => State -> m State
+playSelectedSong state = maybe (return state) (\(_, song) -> play state song) selection
+  where
+    selection :: Maybe (Int, MPD.Song)
+    selection = L.listSelectedElement $ state ^. playlist
+
+
 -- | After a delay send an event signaling the player should seek to the
 -- currently selected position.
 -- The delay is restarted on repeated invocation if the event wasn't
@@ -208,16 +218,11 @@ seek st direction =
 playlistViewEvent :: State
                   -> T.BrickEvent WidgetName Event
                   -> Maybe (T.EventM WidgetName (T.Next State))
-playlistViewEvent st (T.VtyEvent e) = case e of
-  V.EvKey (V.KChar 'g') [] -> Just $ M.continue =<< handleKeyCombo 'g' 'g' move st
+playlistViewEvent state (T.VtyEvent e) = case e of
+  V.EvKey (V.KChar 'g') [] -> Just $ M.continue =<< handleKeyCombo 'g' 'g' move state
     where move st = return $ st & playlist %~ L.listMoveTo 0
-  V.EvKey V.KLeft [] -> Just $ M.continue =<< seek st Backward
-  V.EvKey V.KRight [] -> Just $ M.continue =<< seek st Forward
-  V.EvKey V.KEnter [] ->
-    Just $ M.continue =<< maybe (return st) (\(_, song) -> play st song) selection
-    where
-      selection :: Maybe (Int, MPD.Song)
-      selection = L.listSelectedElement $ st ^. playlist
-
+  V.EvKey V.KLeft [] -> Just $ M.continue =<< seek state Backward
+  V.EvKey V.KRight [] -> Just $ M.continue =<< seek state Forward
+  V.EvKey V.KEnter [] -> Just $ M.continue =<< playSelectedSong state
   _ -> Nothing
 playlistViewEvent st ev = Nothing

@@ -6,6 +6,7 @@ module Hmc.Browser
   , saveTraversal
   , loadSavedTraversal
   , enterDirectory
+  , loadDirectoryToPlaylist
   ) where
 
 import Protolude hiding (State)
@@ -111,17 +112,6 @@ leaveDirectory st =
                   $ thisDirectory `elemIndex` map lsResultPath list
 
 
--- | Load selected item into the playlist
-browserSelect :: MonadIO m => State -> (Int, MPD.LsResult) -> m State
-browserSelect st (position, selection) =
-  modifyState st updatePlaylist
-  <$> modifyPlaylist st selection
-  where
-    updatePlaylist _ (list, newState) = newState
-      & appView .~ PlaylistView
-      & playlist .~ L.list Playlist (fromList list) 1
-
-
 -- | Enters the directory chosen in browser.
 -- If there's nothing chosen does nothing,
 -- if something else than a directory is chosen, does nothing.
@@ -134,6 +124,21 @@ enterDirectory state = maybe (return state) enter selection
     enter _                     = return state
 
 
+-- | Load selected item into the playlist
+loadDirectoryToPlaylist :: MonadIO m => State -> m State
+loadDirectoryToPlaylist st = maybe (return st) modifier selection
+  where
+    selection = L.listSelectedElement (st ^. browserList)
+    modifier (_, path) = modifyState st updatePlaylist
+                     <$> modifyPlaylist st path
+    updatePlaylist _ (list, state) = leaveBrowser state
+      & playlist .~ L.list Playlist (fromList list) 1
+    leaveBrowser state =
+      if state ^. appView == BrowserView BrowserAdd
+        then state
+        else state & appView .~ PlaylistView
+
+
 -- | Handles events specific for the browser view.
 -- Returns Nothing if there is no behavior specified for the event.
 browserViewEvent :: State
@@ -144,9 +149,6 @@ browserViewEvent st (T.VtyEvent e) = case e of
     where move st = return $ st & browserList %~ L.listMoveTo 0
   V.EvKey V.KLeft [] -> Just $ M.continue =<< leaveDirectory st
   V.EvKey V.KRight [] -> Just $ M.continue =<< enterDirectory st
-  V.EvKey V.KEnter [] ->
-    Just $ M.continue =<< maybe (return st) (browserSelect st) selection
-    where selection = L.listSelectedElement $ st ^. browserList
-
+  V.EvKey V.KEnter [] -> Just $ M.continue =<< loadDirectoryToPlaylist st
   _ -> Nothing
 browserViewEvent st ev = Nothing
