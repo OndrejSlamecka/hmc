@@ -24,7 +24,7 @@ Controls
   play the next song.
 * In playlist view: arrows to seek in the song.
 * Switch between views: to playlist `F2` or `Esc`, to add `F3`, to open `F4`.
-* Exit with `q` or `^d`.
+* Pause and exit with `q` or `^d`, exit without pausing with `^q` (Ctrl-q).
 * Update MPD database with `F5`.
 * `gg`, `G` to move to the top/bottom of a list, `^f`/`PageDown` and `^b`/`PageUp` to scroll by pages, shift-arrows to scroll by 5 items.
 * Search with `/`, leave by `Esc`. In browser the search shows items of
@@ -39,4 +39,3 @@ TODO
 ----
 
 * Playing queue (like billy has).
-* Pause music on exit. Add `^q` to exit without pause.

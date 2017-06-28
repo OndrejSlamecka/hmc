@@ -66,14 +66,6 @@ tickerInterval :: Int
 tickerInterval = 128*1000
 
 
--- | Assigns opposite states, avoiding Stopped
-flipState :: MPD.State -> MPD.State
-flipState state = case state of
-  MPD.Playing -> MPD.Paused
-  MPD.Stopped -> MPD.Playing
-  MPD.Paused  -> MPD.Playing
-
-
 -- | Modify progress of playing of current song and
 -- load new song from MPD if needed
 progressLoader :: Double -> State -> MPD.MPD State
@@ -108,6 +100,32 @@ onExit :: MonadIO m => State -> m ()
 onExit = saveTraversal
 
 
+-- | Toggles playing status
+togglePlay :: MonadIO m => State -> m State
+togglePlay state =
+  runAction state toggle
+  >> return (state & playingStatus . stStateL %~ flipState)
+  where
+    toggle :: State -> MPD.MPD ()
+    toggle state' = case MPD.stState (state' ^. playingStatus) of
+                      MPD.Playing -> MPD.pause True
+                      MPD.Stopped -> MPD.play Nothing
+                      MPD.Paused  -> MPD.play Nothing
+    -- | Note that Stopped is avoided
+    flipState plState = case plState of
+      MPD.Playing -> MPD.Paused
+      MPD.Stopped -> MPD.Playing
+      MPD.Paused  -> MPD.Playing
+
+
+-- | Pauses MPD if it is playing
+pause :: MonadIO m => State -> m ()
+pause state = when playing doPause
+  where
+    playing = MPD.stState (state ^. playingStatus) == MPD.Playing
+    doPause = void . liftIO . MPD.withMPD $ MPD.pause True
+
+
 -- | If search is open and can handle the event it is handled by
 -- handleSearchEvent. Otherwise handleViewEvent is used (which might
 -- then use commonEvent).
@@ -139,8 +157,9 @@ commonEvent :: State
             -> T.BrickEvent WidgetName Event
             -> T.EventM WidgetName (T.Next State)
 commonEvent st (T.VtyEvent e) = case e of
-  V.EvKey (V.KChar 'q') [] -> onExit st >> M.halt st
-  V.EvKey (V.KChar 'd') [V.MCtrl] -> onExit st >> M.halt st
+  V.EvKey (V.KChar 'q') [V.MCtrl] -> onExit st >> M.halt st
+  V.EvKey (V.KChar 'q') [] -> pause st >> onExit st >> M.halt st
+  V.EvKey (V.KChar 'd') [V.MCtrl] -> pause st >> onExit st >> M.halt st
   V.EvKey (V.KChar '\t') [] -> M.continue =<< playNext st
   V.EvKey (V.KFun 2) [] -> M.continue $ st & appView .~ PlaylistView
   V.EvKey (V.KFun 3) [] -> M.continue $ st & appView .~ BrowserView BrowserAdd
@@ -160,18 +179,9 @@ commonEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KChar ' ') [] ->
     case st ^. mpdError of
       -- attempt reload when in error state
-      Just _ -> do
-        st' <- runLoader st loadState
-        M.continue st'
-
+      Just _ -> M.continue =<< runLoader st loadState
       -- otherwise (un)pause
-      Nothing -> do
-        void . liftIO . MPD.withMPD $ case MPD.stState $ st ^. playingStatus of
-          MPD.Playing -> MPD.pause True
-          MPD.Stopped -> MPD.play Nothing
-          MPD.Paused  -> MPD.play Nothing
-
-        M.continue $ st & playingStatus . stStateL %~ flipState
+      Nothing -> M.continue =<< togglePlay st
 
   V.EvKey V.KUp []                -> moveListAndContinue
   V.EvKey V.KDown []              -> moveListAndContinue

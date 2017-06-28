@@ -67,6 +67,20 @@ lsResultPath (MPD.LsDirectory p) = MPD.toString p
 lsResultPath (MPD.LsPlaylist p) = MPD.toString p
 
 
+-- | Load status and current song from MPD
+loadState :: State -> MPD.MPD State
+loadState state = do
+  status' <- MPD.status
+  currentSong' <- MPD.currentSong
+
+  return $ state
+    & playingStatus .~ status'
+    & currentSong .~ currentSong'
+
+
+-- Application State Management
+
+
 -- | Returns either the old state with mpdError updated or the new state
 -- with mpdError emptied
 stateFromEither :: State -> MPD.Response State -> State
@@ -83,11 +97,9 @@ runLoader st loader = stateFromEither st <$> liftIO (MPD.withMPD $ loader st)
 
 -- | Runs an MPD action and updates the mpdError in app state
 runAction :: MonadIO m =>
-  State -> MPD.MPD State -> m State
-runAction st loader = runLoader st (\st' -> loader >> return st')
+  State -> (State -> MPD.MPD a) -> m State
+runAction st loader = runLoader st (\st' -> loader st' >> return st')
 
-
--- STATE MANAGEMENT
 
 -- | In case MPD result is an error, returns the state with error,
 -- otherwise returns the state after applying a modifier which gets
@@ -96,14 +108,3 @@ modifyState :: State -> (State -> a -> State) -> MPD.Response a -> State
 modifyState state modifier either = case either of
   Left err -> state & mpdError .~ Just err
   Right result -> modifier state result & mpdError .~ Nothing
-
-
--- | Load status and current song from MPD
-loadState :: State -> MPD.MPD State
-loadState state = do
-  status' <- MPD.status
-  currentSong' <- MPD.currentSong
-
-  return $ state
-    & playingStatus .~ status'
-    & currentSong .~ currentSong'
