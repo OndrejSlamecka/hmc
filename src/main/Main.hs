@@ -66,17 +66,25 @@ tickerInterval :: Int
 tickerInterval = 128*1000
 
 
--- | Modify progress of playing of current song and
--- load new song from MPD if needed
-progressLoader :: Double -> State -> MPD.MPD State
-progressLoader t st =
+-- | Modify progress of playing of the current song and
+-- load new song from MPD if needed.
+--
+-- This function is not a loader (for runLoader) as running it with
+-- runLoader would discard any temporary error (e.g. non-existing
+-- directory) with each tick (making it almost invisible to the user).
+--
+-- runLoader is invoked inside (thus possibly discarding errors) when a
+-- song ends but that seems reasonably rare (if this is causing you
+-- problems create a github issue).
+progress :: MonadIO m => State -> Double -> m State
+progress st t = do
   case MPD.stTime (st ^. playingStatus) of
     Nothing   -> return st
     Just time ->
       -- Reload state if a song just started playing, otherwise just
       -- increase time count
       if fst incrementedTime > fromIntegral (snd time)
-        then loadState st
+        then runLoader st loadState
         else return $ st & playingStatus . stTimeL .~ Just incrementedTime
 
       where
@@ -203,7 +211,7 @@ commonEvent st (T.VtyEvent e) = case e of
 commonEvent st (T.AppEvent Timer) = case MPD.stTime (st ^. playingStatus) of
   Nothing   -> M.continue st -- This happening means a bug or a concurrency problem
   Just _    -> M.continue
-    =<< runLoader st (progressLoader tickerIntervalInMs)
+    =<< progress st tickerIntervalInMs
     where tickerIntervalInMs = fromIntegral tickerInterval / (1000*1000)
 
 commonEvent st (T.AppEvent Seek) = M.continue =<<
