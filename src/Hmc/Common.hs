@@ -81,8 +81,8 @@ loadState state = do
 -- Application State Management
 
 
--- | Returns either the old state with mpdError updated or the new state
--- with mpdError emptied
+-- | Returns either the old state with mpdError updated,
+-- does not remove error if present
 stateFromEither :: State -> MPD.Response State -> State
 stateFromEither oldSt = modifyState oldSt (\oldSt' newSt -> newSt)
 
@@ -107,4 +107,4 @@ runAction st loader = runLoader st (\st' -> loader st' >> return st')
 modifyState :: State -> (State -> a -> State) -> MPD.Response a -> State
 modifyState state modifier either = case either of
   Left err -> state & mpdError .~ Just err
-  Right result -> modifier state result & mpdError .~ Nothing
+  Right result -> modifier state result

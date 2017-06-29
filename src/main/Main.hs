@@ -36,6 +36,10 @@ main = do
     C.writeBChan chan Timer
     threadDelay tickerInterval
 
+  _ <- forkIO . forever $ do
+    MPD.withMPD $ MPD.idle [MPD.DatabaseS]
+    C.writeBChan chan Change
+
   void $ M.customMain (V.mkVty V.defaultConfig) (Just chan) theApp (initialState chan)
 
 
@@ -98,7 +102,7 @@ progress st t = do
 -- and load browser position from the last time
 onStart :: MonadIO m => State -> m State
 onStart st = do
-  st' <- runLoader st (loadState >=> loadPlaylist) >>= loadSavedTraversal
+  st' <- runLoader (st & mpdError .~ Nothing) (loadState >=> loadPlaylist) >>= loadSavedTraversal
   let position = fromMaybe 0 (join $ MPD.sgIndex <$> st' ^. currentSong)
   return $ st' & playlist %~ L.listMoveTo position
 
@@ -172,11 +176,7 @@ commonEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KFun 2) [] -> M.continue $ st & appView .~ PlaylistView
   V.EvKey (V.KFun 3) [] -> M.continue $ st & appView .~ BrowserView BrowserAdd
   V.EvKey (V.KFun 4) [] -> M.continue $ st & appView .~ BrowserView BrowserOpen
-  V.EvKey (V.KFun 5) [] -> M.continue =<< runLoader st loader
-    where loader st' = MPD.update Nothing
-                       >> MPD.idle [MPD.DatabaseS]
-                       >> loadState st'
-
+  V.EvKey (V.KFun 5) [] -> M.continue =<< runAction st (return $ MPD.update Nothing)
   V.EvKey (V.KChar '/') [] -> M.continue $ st
     & searchInput .~ Just createSearchInput
   V.EvKey V.KEsc []     -> M.continue $
@@ -186,8 +186,13 @@ commonEvent st (T.VtyEvent e) = case e of
 
   V.EvKey (V.KChar ' ') [] ->
     case st ^. mpdError of
-      -- attempt reload when in error state
-      Just _ -> M.continue =<< runLoader st loadState
+      -- When file is not found update MPD and start over from the base directory
+      Just (MPD.ACK MPD.FileNotFound _) ->
+            runAction st (return $ MPD.update Nothing)
+         >> reloadDirectory (st & mpdError .~ Nothing & traversal .~ "")
+        >>= M.continue
+      -- In case of other errors try to start over
+      Just _ -> M.continue =<< onStart (st & mpdError .~ Nothing)
       -- otherwise (un)pause
       Nothing -> M.continue =<< togglePlay st
 
@@ -222,6 +227,7 @@ commonEvent st (T.AppEvent Seek) = M.continue =<<
     loader id st' = MPD.seekId id (round . fst $ time) >> return st'
     time = fromMaybe (0,0) (st ^. playingStatus . stTimeL)
 
+commonEvent st (T.AppEvent Change) = M.continue =<< reloadDirectory st
 commonEvent st _ = M.continue st
 
 
@@ -279,7 +285,7 @@ drawUI appState = case appState ^. mpdError of
   Just err ->
     [ Center.vCenter $ vBox $ map (Center.hCenter . txt)
       [ show err
-      , "Spacebar to retry, Esc to quit"
+      , "Spacebar to restart, q to quit"
       ]
     ]
   Nothing -> [ vBox body ]

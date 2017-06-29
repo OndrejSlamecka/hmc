@@ -64,8 +64,11 @@ data WidgetName = Playlist | Browser | Search
   deriving (Eq, Ord, Show)
 
 
--- | Custom event in brick application
-data Event = Timer | Seek deriving Eq
+-- | Custom event in brick application,
+-- Timer is a tick every few ms to update progress,
+-- Seek is to change position in a song,
+-- Change occurs when MPD.idle unblocks.
+data Event = Timer | Seek | Change deriving Eq
 
 
 -- | BrowserAdd and BrowserOpen display browser to add/open files to/in

@@ -5,6 +5,7 @@ module Hmc.Browser
   , browserViewEvent
   , saveTraversal
   , loadSavedTraversal
+  , reloadDirectory
   , enterDirectory
   , loadDirectoryToPlaylist
   ) where
@@ -78,25 +79,37 @@ loadSavedTraversal state = do
       savedTraversal <- liftIO (unpack <$> readFile filepath)
       -- TODO: here we assume that savedTraversal is a correct path,
       -- that should be checked
-      loadDirectory state (fromString savedTraversal) (const 0)
+      runLoader state (loadDirectory (fromString savedTraversal) (const 0))
 
 
 -- | Loads the selected directory and updates traversal stack
-loadDirectory :: MonadIO m => State -> MPD.Path -> ([MPD.LsResult] -> Int) -> m State
-loadDirectory st dir position = do
-  list <- liftIO . MPD.withMPD $ MPD.lsInfo dir
+loadDirectory :: MPD.Path -> ([MPD.LsResult] -> Int) -> State -> MPD.MPD State
+loadDirectory dir position st = do
+  list <- MPD.lsInfo dir
   -- In the topmost directory add "All Music" item
   let list' = if dir == ""
-                then fmap addAllItem list
+                then addAllItem list
                 else list
-  return $ modifyState st updateDirContents list'
+  return $ st
+    & browserListUnderlying .~ list'
+    & browserList .~
+      L.listMoveTo (position list') (L.list Browser (fromList list') 1)
+    & traversal .~ MPD.toString dir
   where
-    updateDirContents st contents = st
-      & browserListUnderlying .~ contents
-      & browserList .~
-        L.listMoveTo (position contents) (L.list Browser (fromList contents) 1)
-      & traversal .~ MPD.toString dir
     addAllItem = (MPD.LsDirectory "" :)
+
+
+-- | Reloads the current directory
+reloadDirectory :: MonadIO m => State -> m State
+reloadDirectory st = runLoader st (loadDirectory currentDirectory position)
+  where
+    currentDirectory = fromString $ st ^. traversal
+    position list =
+      case selectedDirMay of
+        Nothing       -> 0
+        Just selected -> fromMaybe 0
+                         (selected `elemIndex` list)
+    selectedDirMay = snd <$> L.listSelectedElement (st ^. browserList)
 
 
 -- | Move one up in the file tree
@@ -104,7 +117,7 @@ leaveDirectory :: MonadIO m => State -> m State
 leaveDirectory st =
   if thisDirectory == directoryAbove
     then return st
-    else loadDirectory st (fromString directoryAbove) position
+    else runLoader st (loadDirectory (fromString directoryAbove) position)
   where
     directoryAbove = directoryOneUp thisDirectory
     thisDirectory = st ^. traversal
@@ -120,7 +133,7 @@ enterDirectory state = maybe (return state) enter selection
   where
     selection :: Maybe MPD.LsResult
     selection = snd <$> L.listSelectedElement (state ^. browserList)
-    enter (MPD.LsDirectory dir) = loadDirectory state dir (const 0)
+    enter (MPD.LsDirectory dir) = runLoader state (loadDirectory dir (const 0))
     enter _                     = return state
 
 
