@@ -94,7 +94,16 @@ handleSearchEvent state (T.VtyEvent event) input =
                        $ loadDirectoryToPlaylist state
                      >>= leaveSearch (state ^. appView)
                      >>= M.continue
+        _             -> Just $ M.continue state
+    V.EvKey (V.KChar c) [] -> Just $ M.continue =<< updateSearch
+    V.EvKey V.KBS []       -> Just $ M.continue =<< updateSearch
+    V.EvKey V.KDel []      -> Just $ M.continue =<< updateSearch
     _ -> Just $ M.continue =<< do
+      input' <- E.handleEditorEvent event input
+      return $ state & searchInput .~ Just input'
+
+  where
+    updateSearch = do
       input' <- E.handleEditorEvent event input
       let stateNewInput = state & searchInput .~ Just input'
       let search = fromMaybe "" . head $ E.getEditContents input'

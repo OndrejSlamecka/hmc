@@ -8,9 +8,9 @@ import Hmc.Types
 import Hmc.Playlist
 import Hmc.Browser
 import Hmc.Search
-import Data.Text (length, pack)
 import Control.Concurrent (threadDelay, forkIO)
 import Lens.Micro ((.~), (^.), (%~), (<&>))
+import qualified Data.Text as Text (length, pack, null, take, drop, stripStart)
 import qualified Network.MPD as MPD
 import qualified Graphics.Vty as V
 import qualified Brick.AttrMap as A
@@ -37,7 +37,7 @@ main = do
     threadDelay tickerInterval
 
   _ <- forkIO . forever $ do
-    MPD.withMPD $ MPD.idle [MPD.DatabaseS]
+    _ <- MPD.withMPD $ MPD.idle [MPD.DatabaseS]
     C.writeBChan chan Change
 
   void $ M.customMain (V.mkVty V.defaultConfig) (Just chan) theApp (initialState chan)
@@ -160,8 +160,9 @@ handleViewEvent state event =
   fromMaybe (commonEvent state event)
     (go (state ^. appView) state event)
   where
-    go PlaylistView     = playlistViewEvent
-    go (BrowserView _)  = browserViewEvent
+    go PlaylistView    = playlistViewEvent
+    go (BrowserView _) = browserViewEvent
+    go HelpView        = const (const Nothing)
 
 
 -- | Handler of events common for all views and situations.
@@ -173,12 +174,17 @@ commonEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KChar 'q') [] -> pause st >> onExit st >> M.halt st
   V.EvKey (V.KChar 'd') [V.MCtrl] -> pause st >> onExit st >> M.halt st
   V.EvKey (V.KChar '\t') [] -> M.continue =<< playNext st
-  V.EvKey (V.KFun 2) [] -> M.continue $ st & appView .~ PlaylistView
-  V.EvKey (V.KFun 3) [] -> M.continue $ st & appView .~ BrowserView BrowserAdd
-  V.EvKey (V.KFun 4) [] -> M.continue $ st & appView .~ BrowserView BrowserOpen
-  V.EvKey (V.KFun 5) [] -> M.continue =<< runAction st (return $ MPD.update Nothing)
-  V.EvKey (V.KChar '/') [] -> M.continue $ st
-    & searchInput .~ Just createSearchInput
+  V.EvKey (V.KFun 1) []  -> M.continue $ st & appView .~ HelpView
+  V.EvKey (V.KFun 12) [] -> M.continue $ st & appView .~ HelpView
+  V.EvKey (V.KFun 2) []  -> M.continue $ st & appView .~ PlaylistView
+  V.EvKey (V.KFun 3) []  -> M.continue $ st & appView .~ BrowserView BrowserAdd
+  V.EvKey (V.KFun 4) []  -> M.continue $ st & appView .~ BrowserView BrowserOpen
+  V.EvKey (V.KFun 5) []  -> M.continue =<< runAction st (return $ MPD.update Nothing)
+  V.EvKey (V.KChar '/') [] -> M.continue $ go (st ^. appView)
+    where
+      go PlaylistView    = st & searchInput .~ Just createSearchInput
+      go (BrowserView _) = st & searchInput .~ Just createSearchInput
+      go _               = st
   V.EvKey V.KEsc []     -> M.continue $
     case st ^. searchInput of
       Nothing -> st & appView .~ PlaylistView
@@ -212,6 +218,7 @@ commonEvent st (T.VtyEvent e) = case e of
     moveListAndContinue = M.continue =<< goListMovement (st ^. appView)
     goListMovement PlaylistView    = st & playlist %%~ handleListMovement e
     goListMovement (BrowserView _) = st & browserList %%~ handleListMovement e
+    goListMovement HelpView        = return st
 
 commonEvent st (T.AppEvent Timer) = case MPD.stTime (st ^. playingStatus) of
   Nothing   -> M.continue st -- This happening means a bug or a concurrency problem
@@ -274,9 +281,9 @@ timerFormat s = minutes s <> ":" <> seconds s
     minutes t = i2t . (floor :: Double -> Integer) $ (fromIntegral t / 60 :: Double)
     seconds t = leadingZero . i2t $ t `mod` 60
     leadingZero :: Text -> Text
-    leadingZero t = if length t < 2 then "0" <> t else t
+    leadingZero t = if Text.length t < 2 then "0" <> t else t
     i2t :: Integral a => a -> Text
-    i2t = pack . show . toInteger
+    i2t = Text.pack . show . toInteger
 
 
 -- | Main rendering function
@@ -292,13 +299,15 @@ drawUI appState = case appState ^. mpdError of
 
   where
     body = case appState ^. searchInput of
-      Nothing    -> justBody
-      Just input -> bodyAndSearch input
-    justBody =
-      [ renderView appState
-      , hBorderWithLabel $ renderProgress appState
-      ]
-    bodyAndSearch input = justBody ++ [ hBox [ txt "/", E.renderEditor True input ] ]
+      Nothing ->
+        case appState ^. appView of
+          PlaylistView  -> view ++ rprogress
+          BrowserView _ -> view ++ rprogress
+          _             -> view
+      Just input -> view ++ rprogress ++ search input
+    view         = [ renderView appState ]
+    rprogress    = [ hBorderWithLabel $ renderProgress appState ]
+    search input = [ hBox [ txt "/", E.renderEditor True input ] ]
 
 
 --
@@ -317,3 +326,32 @@ renderView :: State -> T.Widget WidgetName
 renderView appState = case appState ^. appView of
   PlaylistView -> renderPlaylist appState
   BrowserView mode -> renderBrowser (browserModeName mode) appState
+  HelpView -> renderHelp
+
+
+renderHelp :: T.Widget WidgetName
+renderHelp = vBox
+  [ txt "hmc by Ondrej Slamecka\n"
+  , txt "https://github.com/ondrejslamecka/hmc\n"
+  , txt "This program is provided under the 3-clause BSD license.\n"
+  , txt "\n"
+  , txt "Controls"
+  , txt "\n"
+  , txt $ wrap 80 "There are three views: Help (F1, F12), Playlist (F2, Esc), Browser (F3 adding   mode, F4 opening mode).\n"
+  , txt $ wrap 80 "You can exit with q or Ctrl-d, if you want to keep the music playing then exit  with Ctrl-q.\n"
+  , txt $ wrap 80 "In lists move up and down by arrows, press enter to play/(add/open), spacebar to (un)pause, Tab to play the next song.\n"
+  , txt $ wrap 80 "In playlist left and right arrows are used to seek in the song, in browser to enter/leave directory.\n"
+  , txt $ wrap 80 "You can use gg, G, Ctrl-f or PageDown, Ctrl-b or PageUp, shift-up, shift-down to move faster in lists.\n"
+  , txt "Search with / and leave search with Esc."
+  ]
+
+
+wrap :: Int -> Text -> Text
+wrap n t = go t ""
+  where
+    go :: Text -> Text -> Text
+    go s a
+      | Text.null s = a
+      | otherwise   = go (rest s) (a <> newline a <> Text.take n s)
+    newline a = if Text.null a then "" else "\n"
+    rest = Text.stripStart . Text.drop n

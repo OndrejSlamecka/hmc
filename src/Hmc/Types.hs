@@ -82,7 +82,7 @@ browserModeName BrowserOpen = "Open"
 
 
 -- | Determines which dialog is shown
-data View = PlaylistView | BrowserView BrowserMode deriving (Eq)
+data View = PlaylistView | BrowserView BrowserMode | HelpView deriving (Eq)
 
 
 -- | Display songs as paths or with ID3 tags
