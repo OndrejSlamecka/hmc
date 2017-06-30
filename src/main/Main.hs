@@ -345,9 +345,9 @@ renderHelp = vBox
   , txt "\n"
   , txt $ wrap 80 "There are three views: Help (F1, F12), Playlist (F2, Esc), Browser (F3 adding   mode, F4 opening mode).\n"
   , txt $ wrap 80 "You can exit with q or Ctrl-d, if you want to keep the music playing then exit  with Ctrl-q.\n"
-  , txt $ wrap 80 "In lists move up and down with arrows, press enter to play/(add/open), spacebar to (un)pause, Tab to play the next song.\n"
-  , txt $ wrap 80 "In playlist left and right arrows are used to seek in the song, in browser to enter/leave directory.\n"
+  , txt $ wrap 80 "In lists move up and down with arrows, press enter to play/(add/open), spacebar to (un)pause, Tab to play the next song. In playlist left and right arrows are  used to seek in the song, in browser to enter/leave directory.\n"
   , txt $ wrap 80 "You can use gg, G, Ctrl-f or PageDown, Ctrl-b or PageUp, Shift-up, Shift-down to move faster in lists.\n"
+  , txt $ wrap 80 "Remove the selected song from playlist with Del.\n"
   , txt "Search with / or s and leave search with Esc."
   ]
 

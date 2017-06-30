@@ -25,11 +25,12 @@ Controls
 * You can exit with `q` or `Ctrl-d`, if you want to keep the music
   playing then exit with `Ctrl-q`.
 * In lists move up and down with arrows, press `enter` to play/(add/open),
-  spacebar to (un)pause, `Tab` to play the next song.
-* In playlist left and right arrows are used to seek in the song, in
-  browser to enter/leave directory.
+  spacebar to (un)pause, `Tab` to play the next song. In playlist left
+  and right arrows are used to seek in the song, in browser to
+  enter/leave directory.
 * You can use `gg`, `G`, `Ctrl-f` or `PageDown`, `Ctrl-b` or `PageUp`, `Shift-up`,
   `Shift-down` to move faster in lists.
+* Remove the selected song from playlist with Del.
 * Search with `/` or `s` and leave search with `Esc`.
 
 
@@ -40,4 +41,3 @@ TODO
 ----
 
 * Playing queue (like billy has).
-* Removing songs from playlist with Del.

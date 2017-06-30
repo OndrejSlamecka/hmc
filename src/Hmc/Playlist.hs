@@ -176,6 +176,16 @@ playSelectedSong state = maybe (return state) (\(_, song) -> play state song) se
     selection = L.listSelectedElement $ state ^. playlist
 
 
+-- | Removes the selected song from the playlist
+removeSelectedSong :: MonadIO m => State -> m State
+removeSelectedSong state = maybe (return state) remove selectedMay
+  where
+    remove i    = do
+      state' <- runAction state (return $ MPD.delete i)
+      return $ state' & playlist %~ (L.listMoveDown . L.listRemove i)
+    selectedMay = state ^. playlist . L.listSelectedL
+
+
 -- | After a delay send an event signaling the player should seek to the
 -- currently selected position.
 -- The delay is restarted on repeated invocation if the event wasn't
@@ -224,5 +234,6 @@ playlistViewEvent state (T.VtyEvent e) = case e of
   V.EvKey V.KLeft [] -> Just $ M.continue =<< seek state Backward
   V.EvKey V.KRight [] -> Just $ M.continue =<< seek state Forward
   V.EvKey V.KEnter [] -> Just $ M.continue =<< playSelectedSong state
+  V.EvKey V.KDel [] -> Just $ M.continue =<< removeSelectedSong state
   _ -> Nothing
 playlistViewEvent st ev = Nothing
