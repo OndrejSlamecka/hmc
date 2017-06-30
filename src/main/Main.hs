@@ -138,6 +138,15 @@ pause state = when playing doPause
     doPause = void . liftIO . MPD.withMPD $ MPD.pause True
 
 
+-- Opens the search dialog if the view supports it
+openSearch :: State -> State
+openSearch st = go (st ^. appView)
+  where
+    go PlaylistView    = st & searchInput .~ Just createSearchInput
+    go (BrowserView _) = st & searchInput .~ Just createSearchInput
+    go _               = st
+
+
 -- | If search is open and can handle the event it is handled by
 -- handleSearchEvent. Otherwise handleViewEvent is used (which might
 -- then use commonEvent).
@@ -180,11 +189,8 @@ commonEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KFun 3) []  -> M.continue $ st & appView .~ BrowserView BrowserAdd
   V.EvKey (V.KFun 4) []  -> M.continue $ st & appView .~ BrowserView BrowserOpen
   V.EvKey (V.KFun 5) []  -> M.continue =<< runAction st (return $ MPD.update Nothing)
-  V.EvKey (V.KChar '/') [] -> M.continue $ go (st ^. appView)
-    where
-      go PlaylistView    = st & searchInput .~ Just createSearchInput
-      go (BrowserView _) = st & searchInput .~ Just createSearchInput
-      go _               = st
+  V.EvKey (V.KChar '/') [] -> M.continue $ openSearch st
+  V.EvKey (V.KChar 's') [] -> M.continue $ openSearch st
   V.EvKey V.KEsc []     -> M.continue $
     case st ^. searchInput of
       Nothing -> st & appView .~ PlaylistView
@@ -339,10 +345,10 @@ renderHelp = vBox
   , txt "\n"
   , txt $ wrap 80 "There are three views: Help (F1, F12), Playlist (F2, Esc), Browser (F3 adding   mode, F4 opening mode).\n"
   , txt $ wrap 80 "You can exit with q or Ctrl-d, if you want to keep the music playing then exit  with Ctrl-q.\n"
-  , txt $ wrap 80 "In lists move up and down by arrows, press enter to play/(add/open), spacebar to (un)pause, Tab to play the next song.\n"
+  , txt $ wrap 80 "In lists move up and down with arrows, press enter to play/(add/open), spacebar to (un)pause, Tab to play the next song.\n"
   , txt $ wrap 80 "In playlist left and right arrows are used to seek in the song, in browser to enter/leave directory.\n"
-  , txt $ wrap 80 "You can use gg, G, Ctrl-f or PageDown, Ctrl-b or PageUp, shift-up, shift-down to move faster in lists.\n"
-  , txt "Search with / and leave search with Esc."
+  , txt $ wrap 80 "You can use gg, G, Ctrl-f or PageDown, Ctrl-b or PageUp, Shift-up, Shift-down to move faster in lists.\n"
+  , txt "Search with / or s and leave search with Esc."
   ]
 
 
