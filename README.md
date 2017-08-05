@@ -32,6 +32,7 @@ Controls
   `Shift-down` to move faster in lists.
 * Remove the selected song from playlist with Del.
 * Search with `/` or `s` and leave search with `Esc`.
+* Control volume with `+` and `-` (if you have MPD configured to control volume).
 
 
 ![Playlist view](screenshot.jpg)

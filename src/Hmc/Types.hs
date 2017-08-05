@@ -2,7 +2,8 @@
 {-# LANGUAGE TemplateHaskell #-} -- just for makeLenses
 
 module Hmc.Types
-  ( stTimeL
+  ( stVolumeL
+  , stTimeL
   , stStateL
   , stSongIDL
   , WidgetName(..)
@@ -11,6 +12,7 @@ module Hmc.Types
   , browserModeName
   , View(..)
   , PlaylistMode(..)
+  , VolumeChange(..)
   , State(..)
   , mpdError
   , eventChannel
@@ -49,11 +51,17 @@ import Data.Time.Clock.POSIX (POSIXTime)
 
 
 -- Lenses for MPD.Status
+stVolumeL :: Lens' MPD.Status (Maybe Int)
+stVolumeL = lens MPD.stVolume (\status newVolume -> status { MPD.stVolume = newVolume })
+
+
 stTimeL :: Lens' MPD.Status (Maybe (Double, MPD.Seconds))
 stTimeL = lens MPD.stTime (\status newTime -> status { MPD.stTime = newTime })
 
+
 stStateL :: Lens' MPD.Status MPD.State
 stStateL = lens MPD.stState (\status newState -> status { MPD.stState = newState })
+
 
 stSongIDL :: Lens' MPD.Status (Maybe MPD.Id)
 stSongIDL = lens MPD.stSongID (\status newSongID -> status { MPD.stSongID = newSongID })
@@ -87,6 +95,10 @@ data View = PlaylistView | BrowserView BrowserMode | HelpView deriving (Eq)
 
 -- | Display songs as paths or with ID3 tags
 data PlaylistMode = PlaylistPaths | PlaylistTags deriving (Eq)
+
+
+-- | Isomorphic to Bool but defined and used for clarity
+data VolumeChange = VolumeUp | VolumeDown
 
 
 -- | Brick application state

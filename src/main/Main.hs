@@ -112,6 +112,19 @@ onExit :: MonadIO m => State -> m ()
 onExit = saveTraversal
 
 
+-- | Volume
+changeVolume :: MonadIO m => State -> VolumeChange -> m State
+changeVolume st change = maybe (return st) go (st ^. playingStatus . stVolumeL)
+  where
+    go volume = runAction st' (\_ -> MPD.setVolume volume')
+      where
+        st'         = st & playingStatus . stVolumeL .~ Just volume'
+        changeSpeed = 2
+        volume'     = case change of
+          VolumeUp   -> min (volume + changeSpeed) 100
+          VolumeDown -> max (volume - changeSpeed) 0
+
+
 -- | Toggles playing status
 togglePlay :: MonadIO m => State -> m State
 togglePlay state =
@@ -191,6 +204,8 @@ commonEvent st (T.VtyEvent e) = case e of
   V.EvKey (V.KFun 5) []  -> M.continue =<< runAction st (return $ MPD.update Nothing)
   V.EvKey (V.KChar '/') [] -> M.continue $ openSearch st
   V.EvKey (V.KChar 's') [] -> M.continue $ openSearch st
+  V.EvKey (V.KChar '-') [] -> M.continue =<< changeVolume st VolumeDown
+  V.EvKey (V.KChar '+') [] -> M.continue =<< changeVolume st VolumeUp
   V.EvKey V.KEsc []     -> M.continue $
     case st ^. searchInput of
       Nothing -> st & appView .~ PlaylistView
@@ -263,10 +278,13 @@ handleListMovement event list =
 
 --- Rendering -----------------------------------------------------------------
 
-
 --
 -- Utility functions
 --
+
+i2t :: Integral a => a -> Text
+i2t = Text.pack . show . toInteger
+
 
 stateToText :: MPD.State -> Text
 stateToText state = case state of
@@ -288,8 +306,6 @@ timerFormat s = minutes s <> ":" <> seconds s
     seconds t = leadingZero . i2t $ t `mod` 60
     leadingZero :: Text -> Text
     leadingZero t = if Text.length t < 2 then "0" <> t else t
-    i2t :: Integral a => a -> Text
-    i2t = Text.pack . show . toInteger
 
 
 -- | Main rendering function
@@ -312,7 +328,11 @@ drawUI appState = case appState ^. mpdError of
           _             -> view
       Just input -> view ++ rprogress ++ search input
     view         = [ renderView appState ]
-    rprogress    = [ hBorderWithLabel $ renderProgress appState ]
+    rprogress    =
+      [ hBorderWithLabel $ hBox
+        [ renderProgress appState
+        , renderVolume appState ]
+      ]
     search input = [ hBox [ txt "/", E.renderEditor True input ] ]
 
 
@@ -326,6 +346,12 @@ renderProgress appState = txt $ spacepad (elapsedT <> "/" <> totalT)
     elapsedT = timerFormat . floor . fst $ time
     totalT = timerFormat . snd $ time
     time = fromMaybe (0,0) (appState ^. playingStatus . stTimeL)
+
+
+renderVolume :: State -> T.Widget n
+renderVolume appState = case appState ^. playingStatus . stVolumeL of
+  Nothing     -> txt ""
+  Just volume -> txt $ "@ " <> i2t volume <> " % "
 
 
 renderView :: State -> T.Widget WidgetName
