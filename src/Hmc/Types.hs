@@ -6,6 +6,9 @@ module Hmc.Types
   , stTimeL
   , stStateL
   , stSongIDL
+  , stRepeatL
+  , stPlaylistLengthL
+  , stSongPosL
   , WidgetName(..)
   , Event(..)
   , BrowserMode(..)
@@ -65,6 +68,18 @@ stStateL = lens MPD.stState (\status newState -> status { MPD.stState = newState
 
 stSongIDL :: Lens' MPD.Status (Maybe MPD.Id)
 stSongIDL = lens MPD.stSongID (\status newSongID -> status { MPD.stSongID = newSongID })
+
+
+stRepeatL :: Lens' MPD.Status Bool
+stRepeatL = lens MPD.stRepeat (\status newRepeat -> status { MPD.stRepeat = newRepeat })
+
+
+stPlaylistLengthL :: Lens' MPD.Status Integer
+stPlaylistLengthL = lens MPD.stPlaylistLength (\status newPlLength -> status { MPD.stPlaylistLength = newPlLength })
+
+
+stSongPosL :: Lens' MPD.Status (Maybe MPD.Position)
+stSongPosL = lens MPD.stSongPos (\status newSongPos -> status { MPD.stSongPos = newSongPos })
 
 
 -- | Names of widgets for Brick

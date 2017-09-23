@@ -158,10 +158,17 @@ play st song =
 
 
 -- | Play the next song.
+-- Does nothing if there is no next song.
 playNext :: MonadIO m => State -> m State
-playNext st = runLoader st loader
+playNext st
+  | repeatOff && currentSongIsLast = return st
+  | otherwise                      = runLoader st nextLoader
   where
-    loader st' = do
+    repeatOff         = not (st ^. playingStatus . stRepeatL)
+    currentSongIsLast = st ^. playingStatus . stSongPosL == lastSongPosition
+    lastSongPosition  = Just . fromInteger . flip (-) 1 $ st ^. playingStatus . stPlaylistLengthL
+
+    nextLoader st' = do
       MPD.next
       st'' <- loadState st'
       return $ st'' & playlist %~ L.listMoveTo (currentSongPosition st'')

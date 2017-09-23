@@ -81,7 +81,7 @@ tickerInterval = 128*1000
 -- song ends but that seems reasonably rare (if this is causing you
 -- problems create a github issue).
 progress :: MonadIO m => State -> Double -> m State
-progress st t = do
+progress st t =
   case MPD.stTime (st ^. playingStatus) of
     Nothing   -> return st
     Just time ->
