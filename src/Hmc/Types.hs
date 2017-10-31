@@ -24,6 +24,7 @@ module Hmc.Types
   , playlistMode
   , tagsAndWidths
   , seekTimer
+  , progressTimerThread
   , playlist
   , playlistTagsMaxWidths
   , currentSong
@@ -127,6 +128,7 @@ data State = State
   , _playingStatus :: MPD.Status
   , _appView :: View
   , _seekTimer :: Maybe (Updatable ())
+  , _progressTimerThread :: Maybe ThreadId
 
   , _playlist :: L.List WidgetName MPD.Song
   , _playlistTagsMaxWidths :: Map MPD.Metadata Int
@@ -170,6 +172,7 @@ initialState chan = State
     , (MPD.Title, 120)
     ]
   , _seekTimer = Nothing
+  , _progressTimerThread = Nothing
   , _playlist = L.list Playlist mempty 1
   , _playlistTagsMaxWidths = Map.empty
   , _currentSong = Nothing

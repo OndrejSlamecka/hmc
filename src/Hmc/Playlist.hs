@@ -218,7 +218,7 @@ seek st direction =
   case join $ MPD.sgId <$> st ^. currentSong of
     Nothing -> return st
     Just id -> do
-      st' <- scheduleSeekEvent st
+      st' <- liftIO $ stopTimer =<< scheduleSeekEvent st
       return $ st' & playingStatus . stTimeL .~ Just time'
   where
     time' = (pos', snd time)

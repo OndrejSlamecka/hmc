@@ -8,7 +8,7 @@ import Hmc.Types
 import Hmc.Playlist
 import Hmc.Browser
 import Hmc.Search
-import Control.Concurrent (threadDelay, forkIO)
+import Control.Concurrent (forkIO)
 import Lens.Micro ((.~), (^.), (%~), (<&>))
 import qualified Data.Text as Text (length, pack, null, take, drop, stripStart)
 import qualified Network.MPD as MPD
@@ -32,9 +32,9 @@ import Brick.Widgets.Core
 main :: IO ()
 main = do
   chan <- C.newBChan 10
-  _ <- forkIO . forever $ do
-    C.writeBChan chan Timer
-    threadDelay tickerInterval
+  {-_ <- forkIO . forever $ do-}
+    {-C.writeBChan chan Timer-}
+    {-threadDelay tickerInterval-}
 
   _ <- forkIO . forever $ do
     _ <- MPD.withMPD $ MPD.idle [MPD.DatabaseS]
@@ -63,13 +63,6 @@ attributeMap = A.attrMap V.defAttr
 --- Event Handling ------------------------------------------------------------
 
 
--- | Every tickerInterval microseconds a Timer event is sent and the
--- playing progress is updated (if the player is playing).
--- The thread sending this event is created in the main file
-tickerInterval :: Int
-tickerInterval = 128*1000
-
-
 -- | Modify progress of playing of the current song and
 -- load new song from MPD if needed.
 --
@@ -80,8 +73,8 @@ tickerInterval = 128*1000
 -- runLoader is invoked inside (thus possibly discarding errors) when a
 -- song ends but that seems reasonably rare (if this is causing you
 -- problems create a github issue).
-progress :: MonadIO m => State -> Double -> m State
-progress st t =
+progress :: MonadIO m => State -> m State
+progress st =
   case MPD.stTime (st ^. playingStatus) of
     Nothing   -> return st
     Just time ->
@@ -93,7 +86,7 @@ progress st t =
 
       where
         incrementedTime = if MPD.stState (st ^. playingStatus) == MPD.Playing
-          then (fst time + t, snd time)
+          then (fst time + 1000, snd time)
           else time
 
 
@@ -102,7 +95,9 @@ progress st t =
 -- and load browser position from the last time
 onStart :: MonadIO m => State -> m State
 onStart st = do
-  st' <- runLoader (st & mpdError .~ Nothing) (loadState >=> loadPlaylist) >>= loadSavedTraversal
+  st' <- runLoader (st & mpdError .~ Nothing) (loadState >=> loadPlaylist)
+         >>= loadSavedTraversal
+         >>= liftIO <$> updateTimer
   let position = fromMaybe 0 (join $ MPD.sgIndex <$> st' ^. currentSong)
   return $ st' & playlist %~ L.listMoveTo position
 
@@ -129,7 +124,7 @@ changeVolume st change = maybe (return st) go (st ^. playingStatus . stVolumeL)
 togglePlay :: MonadIO m => State -> m State
 togglePlay state =
   runAction state toggle
-  >> return (state & playingStatus . stStateL %~ flipState)
+  >> liftIO (updateTimer (state & playingStatus . stStateL %~ flipState))
   where
     toggle :: State -> MPD.MPD ()
     toggle state' = case MPD.stState (state' ^. playingStatus) of
@@ -243,14 +238,12 @@ commonEvent st (T.VtyEvent e) = case e of
 
 commonEvent st (T.AppEvent Timer) = case MPD.stTime (st ^. playingStatus) of
   Nothing   -> M.continue st -- This happening means a bug or a concurrency problem
-  Just _    -> M.continue
-    =<< progress st tickerIntervalInMs
-    where tickerIntervalInMs = fromIntegral tickerInterval / (1000*1000)
+  Just _    -> M.continue =<< progress st
 
 commonEvent st (T.AppEvent Seek) = M.continue =<<
   case join $ MPD.sgId <$> st ^. currentSong of
     Nothing -> return st
-    Just id -> runLoader st (loader id) <&> seekTimer .~ Nothing
+    Just id -> liftIO $ updateTimer =<< (runLoader st (loader id) <&> seekTimer .~ Nothing)
   where
     loader id st' = MPD.seekId id (round . fst $ time) >> return st'
     time = fromMaybe (0,0) (st ^. playingStatus . stTimeL)

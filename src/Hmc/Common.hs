@@ -1,5 +1,7 @@
 module Hmc.Common
   ( (%%~)
+  , stopTimer
+  , updateTimer
   , directoryOneUp
   , listEndIndex
   , handleKeyCombo
@@ -26,11 +28,53 @@ import qualified Network.MPD as MPD
 import qualified Brick.Main as M
 import qualified Brick.Widgets.List as L
 import qualified Brick.Types as T
+import qualified Brick.BChan as C
 import qualified Graphics.Vty as V
 
 
 -- | Microlens doesn't have this
 (%%~) = identity
+
+
+-- | If MPD is playing and we have no ticker, create one.
+-- If MPD is not playing and we have a ticker, kill it.
+-- Otherwise do nothing.
+updateTimer :: State -> IO State
+updateTimer state =
+  case (state ^. playingStatus . stStateL, state ^. progressTimerThread) of
+    (MPD.Playing, Nothing)     -> start
+    (MPD.Stopped, Just thread) -> stopTimer state
+    (MPD.Paused,  Just thread) -> stopTimer state
+    _                          -> return state
+
+  where
+    start = do thread <- startTimer state
+               return $ state & progressTimerThread .~ thread
+
+
+stopTimer :: State -> IO State
+stopTimer state = case state ^. progressTimerThread of
+  Nothing     -> return state
+  Just thread -> killThread thread
+                 >> return (state & progressTimerThread .~ Nothing)
+
+
+-- | Waits until a whole number of seconds of the song has passed
+-- and then starts sending the Timer event every 1 sec.
+startTimer :: State -> IO (Maybe ThreadId)
+startTimer state =
+  case state ^. playingStatus . stTimeL of
+    Nothing -> return Nothing
+    Just time -> do
+      fmap Just . forkIO $ do
+        threadDelay remains
+        forever $ do
+          C.writeBChan (state ^. eventChannel) Timer
+          threadDelay (1000*1000)
+
+      where
+        remains = 1000 - (elapsed `mod` 1000)
+        elapsed = round $ fst time * 1000
 
 
 -- | Like takeDirectory but replaces "." with "",
@@ -73,7 +117,7 @@ loadState state = do
   status' <- MPD.status
   currentSong' <- MPD.currentSong
 
-  return $ state
+  liftIO $ updateTimer $ state
     & playingStatus .~ status'
     & currentSong .~ currentSong'
 
