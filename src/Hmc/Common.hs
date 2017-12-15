@@ -65,7 +65,7 @@ startTimer :: State -> IO (Maybe ThreadId)
 startTimer state =
   case state ^. playingStatus . stTimeL of
     Nothing -> return Nothing
-    Just time -> do
+    Just time ->
       fmap Just . forkIO $ do
         threadDelay remains
         forever $ do

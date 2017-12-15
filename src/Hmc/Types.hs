@@ -41,9 +41,6 @@ module Hmc.Types
 import Protolude hiding (State)
 import Lens.Micro.TH (makeLenses)
 import Lens.Micro (lens, Lens')
-import Data.Text (null, unpack, pack, split, append)
-import Data.String (fromString)
-import Data.Char (digitToInt)
 import System.Timer.Updatable (Updatable)
 import qualified Data.Map.Lazy as Map
 import qualified Network.MPD as MPD

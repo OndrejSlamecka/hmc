@@ -32,9 +32,6 @@ import Brick.Widgets.Core
 main :: IO ()
 main = do
   chan <- C.newBChan 10
-  {-_ <- forkIO . forever $ do-}
-    {-C.writeBChan chan Timer-}
-    {-threadDelay tickerInterval-}
 
   _ <- forkIO . forever $ do
     _ <- MPD.withMPD $ MPD.idle [MPD.DatabaseS]
