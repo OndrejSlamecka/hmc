@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Main where
 
@@ -10,6 +11,7 @@ import Hmc.Browser
 import Hmc.Search
 import Control.Concurrent (forkIO)
 import Lens.Micro ((.~), (^.), (%~), (<&>))
+import Data.String.Here (here)
 import qualified Data.Text as Text (length, pack, null, take, drop, stripStart)
 import qualified Network.MPD as MPD
 import qualified Graphics.Vty as V
@@ -24,6 +26,7 @@ import qualified Brick.Widgets.Center as Center
 import Brick.Widgets.Border (hBorderWithLabel)
 import Brick.Widgets.Core
   ( txt
+  , str
   , vBox
   , hBox
   )
@@ -352,20 +355,24 @@ renderView appState = case appState ^. appView of
 
 
 renderHelp :: T.Widget WidgetName
-renderHelp = vBox
-  [ txt "hmc by Ondrej Slamecka\n"
-  , txt "https://github.com/ondrejslamecka/hmc\n"
-  , txt "This program is provided under the 3-clause BSD license.\n"
-  , txt "\n"
-  , txt "Controls"
-  , txt "\n"
-  , txt $ wrap 80 "There are three views: Help (F1, F12), Playlist (F2, Esc), Browser (F3 adding   mode, F4 opening mode).\n"
-  , txt $ wrap 80 "You can exit with q or Ctrl-d, if you want to keep the music playing then exit  with Ctrl-q.\n"
-  , txt $ wrap 80 "In lists move up and down with arrows, press enter to play/(add/open), spacebar to (un)pause, Tab to play the next song. In playlist left and right arrows are  used to seek in the song, in browser to enter/leave directory.\n"
-  , txt $ wrap 80 "You can use gg, G, Ctrl-f or PageDown, Ctrl-b or PageUp, Shift-up, Shift-down to move faster in lists.\n"
-  , txt $ wrap 80 "Remove the selected song from playlist with Del.\n"
-  , txt "Search with / or s and leave search with Esc."
-  ]
+renderHelp = vBox . (:[]) . str $ [here|
+hmc by Ondrej Slamecka
+https://github.com/ondrejslamecka/hmc
+This program is provided under the 3-clause BSD license.
+
+Controls
+
+* There are three views: Help (F1, F12), Playlist (F2, Esc), Browser (F3 adding
+  mode, F4 opening mode).
+* You can exit with q or Ctrl-d, if you want to keep the music playing then exit
+  with Ctrl-q.
+* In lists move up and down with arrows, press enter to play/(add/open),
+  spacebar to (un)pause, Tab to play the next song. In playlist left and right
+  arrows are used to seek in the song, in browser to enter/leave directory.
+* You can use gg, G, Ctrl-f or PageDown, Ctrl-b or PageUp, Shift-up, Shift-down
+  to move faster in lists.
+* Remove the selected song from playlist with Del.
+* Search with / or s and leave search with Esc.|]
 
 
 wrap :: Int -> Text -> Text
