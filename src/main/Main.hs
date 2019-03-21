@@ -357,7 +357,9 @@ renderView appState = case appState ^. appView of
 
 
 renderHelp :: T.Widget WidgetName
-renderHelp = vBox . (:[]) . str $ [here|
+renderHelp = vBox
+  [ hBorderWithLabel (txt $ " Help ")
+  , str $ [here|
 hmc by Ondrej Slamecka
 https://github.com/ondrejslamecka/hmc
 This program is provided under the 3-clause BSD license.
@@ -375,6 +377,7 @@ Controls
   to move faster in lists.
 * Remove the selected song from playlist with Del.
 * Search with / or s and leave search with Esc.|]
+  ]
 
 
 wrap :: Int -> Text -> Text
