@@ -40,7 +40,9 @@ main = do
     _ <- MPD.withMPD $ MPD.idle [MPD.DatabaseS]
     C.writeBChan chan Change
 
-  void $ M.customMain (V.mkVty V.defaultConfig) (Just chan) theApp (initialState chan)
+  let buildVty = V.mkVty V.defaultConfig
+  initialVty <- buildVty
+  void $ M.customMain initialVty buildVty (Just chan) theApp (initialState chan)
 
 
 theApp :: M.App State Event WidgetName
@@ -326,7 +328,7 @@ drawUI appState = case appState ^. mpdError of
         [ renderProgress appState
         , renderVolume appState ]
       ]
-    search input = [ hBox [ txt "/", E.renderEditor True input ] ]
+    search input = [ hBox [ txt "/", E.renderEditor renderSearchContent True input ] ]
 
 
 --

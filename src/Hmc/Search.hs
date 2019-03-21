@@ -29,7 +29,7 @@ import Brick.Widgets.Core (txt)
 
 -- | The search widget
 createSearchInput :: E.Editor Text WidgetName
-createSearchInput = E.editorText Search renderSearchContent (Just 1) ""
+createSearchInput = E.editor Search (Just 1) ""
 
 
 -- | Rendering
