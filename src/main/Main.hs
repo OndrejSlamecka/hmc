@@ -88,7 +88,7 @@ progress st =
 
       where
         incrementedTime = if MPD.stState (st ^. playingStatus) == MPD.Playing
-          then (fst time + 1000, snd time)
+          then (fst time + 1, snd time)
           else time
 
 
