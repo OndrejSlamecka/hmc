@@ -41,4 +41,5 @@ Controls
 TODO
 ----
 
+* Fix: Repeated timer kills just before ticks can lead to drift from actual elapsed time (when starting progress timer, status should be fetched from MPD?)
 * Playing queue (like billy has).
