@@ -67,14 +67,14 @@ startTimer state =
     Nothing -> return Nothing
     Just time ->
       fmap Just . forkIO $ do
-        threadDelay remains
+        threadDelay (msToNextFullSecond * 1000)
         forever $ do
           C.writeBChan (state ^. eventChannel) Timer
           threadDelay (1000*1000)
 
       where
-        remains = 1000 - (elapsed `mod` 1000)
-        elapsed = round $ fst time * 1000
+        msToNextFullSecond = 1000 - (elapsedMs `mod` 1000)
+        elapsedMs = round $ fst time * 1000
 
 
 -- | Like takeDirectory but replaces "." with "",
