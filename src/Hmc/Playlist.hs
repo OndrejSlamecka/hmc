@@ -21,6 +21,7 @@ import Data.String (fromString)
 import System.Timer.Updatable (replacer, renewIO)
 import Lens.Micro ((.~), (^.), (%~), (<&>))
 import qualified Data.Text as Text
+import qualified Data.ByteString as BS
 import qualified Data.Map.Lazy as Map
 import qualified Network.MPD
 import qualified System.Directory as D
@@ -100,7 +101,7 @@ playlistToTagsMaxWidths tagsAndWidths playlist = fromMaybe Map.empty
     tagLengthMaps = map (tagsToLengths . MPD.sgTags) playlist
     -- If the list of values is empty the length is set to 20 to leave
     -- some space for an error text (this approach should be improved)
-    tagsToLengths = Map.map (\vs -> fromMaybe 20 (Text.length . MPD.toText <$> head vs))
+    tagsToLengths = Map.map (\vs -> fromMaybe 20 (BS.length . MPD.toUtf8 <$> head vs))
 
 
 -- | Load playlist information from MPD

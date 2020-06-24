@@ -26,6 +26,7 @@ library
                      , Hmc.Playlist
                      , Hmc.Browser
   build-depends:       base
+                     , bytestring
                      , protolude
                      , microlens
                      , microlens-th
