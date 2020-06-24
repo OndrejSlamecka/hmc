@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-13.13
+resolver: lts-16.2
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -40,15 +40,7 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-- brick-0.47
-- text-zipper-0.9
-- vty-5.25.1
-- timers-0.2.0.3
-- suspend-0.2.0.0
-- timers-updatable-0.2.0.2
-- config-ini-0.2.4.0
-- data-clist-0.1.2.2
-- word-wrap-0.4.1
+- timers-updatable-0.2.0.2@sha256:8dc262bb1324c02eae4251f2b0f78109d1a6133754d5ae845778908abda43858,946
 
 # Override default flag values for local packages and extra-deps
 flags: {}

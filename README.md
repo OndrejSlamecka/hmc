@@ -42,4 +42,5 @@ TODO
 ----
 
 * Fix: Repeated timer kills just before ticks can lead to drift from actual elapsed time (when starting progress timer, status should be fetched from MPD?)
+* Improve: Make "next song" more responsive: execute "next song" MPD call asynchronously, before it returns queue all "next song" commands and once it returns just process them at once.
 * Playing queue (like billy has).

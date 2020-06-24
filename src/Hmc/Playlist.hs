@@ -222,7 +222,7 @@ seek st direction =
       return $ st' & playingStatus . stTimeL .~ Just time'
   where
     time' = (pos', snd time)
-    pos'  = max 0 (min (fromIntegral $ snd time - 1) (fst time + delta))
+    pos'  = max 0 (min (snd time - 1) (fst time + delta))
     pos   = fst time
     time  = fromMaybe (0,0) (st ^. playingStatus . stTimeL)
     delta = go direction

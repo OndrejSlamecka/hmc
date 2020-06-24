@@ -82,7 +82,7 @@ progress st =
     Just time ->
       -- Reload state if a song just started playing, otherwise just
       -- increase time count
-      if fst incrementedTime > fromIntegral (snd time)
+      if fst incrementedTime > snd time
         then runLoader st loadState
         else return $ st & playingStatus . stTimeL .~ Just incrementedTime
 
@@ -167,7 +167,8 @@ handleEvent state event =
   case (event, state ^. searchInput) of
     (T.VtyEvent _, Just input) ->
       fromMaybe (handleViewEvent state event) (handleSearchEvent state event input)
-    _ -> handleViewEvent state event
+    _ ->
+      handleViewEvent state event
 
 
 -- | Handler is chosen according to the current view. If the event is
@@ -247,7 +248,7 @@ commonEvent st (T.AppEvent Seek) = M.continue =<<
     Nothing -> return st
     Just id -> liftIO $ updateTimer =<< (runLoader st (loader id) <&> seekTimer .~ Nothing)
   where
-    loader id st' = MPD.seekId id (round . fst $ time) >> return st'
+    loader id st' = MPD.seekId id (fst time) >> return st'
     time = fromMaybe (0,0) (st ^. playingStatus . stTimeL)
 
 commonEvent st (T.AppEvent Change) = M.continue =<< reloadDirectory st
@@ -281,7 +282,7 @@ i2t :: Integral a => a -> Text
 i2t = Text.pack . show . toInteger
 
 
-stateToText :: MPD.State -> Text
+stateToText :: MPD.PlaybackState -> Text
 stateToText state = case state of
   MPD.Stopped -> "■"
   MPD.Paused  -> "⏸" -- http://www.fileformat.info/info/unicode/char/23f8/index.htm
@@ -339,7 +340,7 @@ renderProgress :: State -> T.Widget n
 renderProgress appState = txt $ spacepad (elapsedT <> "/" <> totalT)
   where
     elapsedT = timerFormat . floor . fst $ time
-    totalT = timerFormat . snd $ time
+    totalT = timerFormat . floor . snd $ time
     time = fromMaybe (0,0) (appState ^. playingStatus . stTimeL)
 
 

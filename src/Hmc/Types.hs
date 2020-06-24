@@ -52,15 +52,15 @@ import Data.Time.Clock.POSIX (POSIXTime)
 
 
 -- Lenses for MPD.Status
-stVolumeL :: Lens' MPD.Status (Maybe Int)
+stVolumeL :: Lens' MPD.Status (Maybe MPD.Volume)
 stVolumeL = lens MPD.stVolume (\status newVolume -> status { MPD.stVolume = newVolume })
 
 
-stTimeL :: Lens' MPD.Status (Maybe (Double, MPD.Seconds))
+stTimeL :: Lens' MPD.Status (Maybe (MPD.FractionalSeconds, MPD.FractionalSeconds))
 stTimeL = lens MPD.stTime (\status newTime -> status { MPD.stTime = newTime })
 
 
-stStateL :: Lens' MPD.Status MPD.State
+stStateL :: Lens' MPD.Status MPD.PlaybackState
 stStateL = lens MPD.stState (\status newState -> status { MPD.stState = newState })
 
 
